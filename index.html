@@ -615,7 +615,7 @@
                 : `${patient.membrane === 'PROM_MI' ? 'PROM' : patient.membrane} • ${patient.liquor || 'Clear'}`;
             const isAbnLiq = patient.membrane !== 'Intact' && !['Clear', 'N/A'].includes(patient.liquor);
             const issuesArr = Array.isArray(patient.issues) ? patient.issues : [];
-            const isOwnWard = patient.location === userRole;
+            const isOwnWard = String(patient.location || '').trim().toUpperCase() === String(userRole || '').trim().toUpperCase();
             const canWardEdit = isOwnWard || userRole === 'Admin';
             const canConfirmTransfer = isOwnWard || userRole === 'Admin';
 
@@ -754,6 +754,12 @@
                                                 </button>
                                             </>
                                         )}
+                                    </div>
+                                )}
+
+                                {!canManageLR && !canWardEdit && (
+                                    <div className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                                        <i className="ph-fill ph-lock-simple"></i> Read-only • Managed by {patient.location}
                                     </div>
                                 )}
 
@@ -2458,16 +2464,23 @@
 
             const allLSCSIndications = React.useMemo(() => {
                 const map = new Map();
-                [...LSCS_INDICATIONS, ...customIndications].forEach(ind => {
+                [...customIndications, ...LSCS_INDICATIONS].forEach(ind => {
                     const clean = String(ind || '').trim();
                     if (clean && !map.has(clean.toLowerCase())) map.set(clean.toLowerCase(), clean);
                 });
                 return Array.from(map.values());
             }, [customIndications]);
 
+            const isSameWard = (loc, role) =>
+                String(loc || '').trim().toUpperCase() === String(role || '').trim().toUpperCase();
+
             const handleWardSend = (id, staffName) => {
                 const target = patients.find(p => p.id === id);
                 if (!target) return;
+                if (userRole !== 'Admin' && !isSameWard(target.location, userRole)) {
+                    showToast(`Only ${target.location} can confirm transfer for this patient.`, 'warning');
+                    return;
+                }
                 upsertPatient({ ...target, status: 'EN_ROUTE', wardSendTime: Date.now(), wardNotedBy: staffName });
                 playAlertSound('update', isMuted);
                 showToast(`Transfer confirmed by ${staffName}. Patient en route to LR.`);
@@ -2495,6 +2508,11 @@
             const handleStatusUpdate = (updatedFields) => {
                 const target = patients.find(p => p.id === updatedFields.id);
                 if (!target) return;
+                if (userRole !== 'Admin' && userRole !== 'LR' && !isSameWard(target.location, userRole)) {
+                    showToast(`Only ${target.location} can update this patient.`, 'warning');
+                    setUpdateModalPatient(null);
+                    return;
+                }
                 const updated = { ...target, ...updatedFields, manualOverride: 0 };
                 const oldScore = calculatePriority({ ...target, manualOverride: 0 });
                 const newScore = calculatePriority(updated);
@@ -2581,6 +2599,10 @@
             const handleCancelBooking = (id) => {
                 const target = patients.find(p => p.id === id);
                 if (!target) return;
+                if (userRole !== 'Admin' && !isSameWard(target.location, userRole)) {
+                    showToast(`Only ${target.location} can cancel this booking.`, 'warning');
+                    return;
+                }
                 setPatients(prev => prev.filter(p => p.id !== id));
                 syncToDB('UPDATE', { patient: { ...target, status: 'CANCELLED' } });
                 showToast('Booking cancelled.');
