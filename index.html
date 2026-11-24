@@ -94,6 +94,7 @@
 
         const DELIVERY_MODES_LR = ['SVD', 'VAD', 'Forceps', 'Breech', 'EMLSCS', 'ELLSCS'];
         const DELIVERY_MODES_DIRECT = ['ELLSCS', 'EMLSCS', 'SVD', 'VAD', 'Forceps', 'Breech', 'BBA'];
+        const RACE_OPTIONS = ['Malay', 'Chinese', 'Indian', 'Orang Asli', 'Others', 'Foreigner'];
 
         // Built-in predictive-typing LSCS indications list (auto-expands as staff enter custom indications)
         const LSCS_INDICATIONS = [
@@ -140,24 +141,27 @@
         ];
 
         // =========================================================================
-        // AUDIO ALERTS (Web Audio API — No External URLs)
+        // AUDIO, DATE/TIME, PPH & CLINICAL TRIAGE UTILITIES
         // =========================================================================
-        let sharedAudioCtx = null;
+        let _audioCtx = null;
         const getAudioCtx = () => {
-            if (!sharedAudioCtx && (window.AudioContext || window.webkitAudioContext)) {
-                sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            try {
+                if (!_audioCtx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) _audioCtx = new AudioCtx();
+                }
+                if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume();
+                return _audioCtx;
+            } catch (e) {
+                return null;
             }
-            if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
-                sharedAudioCtx.resume().catch(() => {});
-            }
-            return sharedAudioCtx;
         };
 
         const playAlertSound = (type, isMuted = false) => {
             if (isMuted) return;
+            const ctx = getAudioCtx();
+            if (!ctx) return;
             try {
-                const ctx = getAudioCtx();
-                if (!ctx) return;
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
                 osc.connect(gain);
@@ -166,16 +170,25 @@
 
                 if (type === 'critical') {
                     osc.type = 'square';
-                    osc.frequency.setValueAtTime(820, now);
-                    osc.frequency.setValueAtTime(1180, now + 0.1);
+                    osc.frequency.setValueAtTime(880, now);
+                    osc.frequency.setValueAtTime(1180, now + 0.12);
                     gain.gain.setValueAtTime(0.08, now);
                     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
                     osc.start(now);
                     osc.stop(now + 0.35);
+                } else if (type === 'emergency') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(620, now);
+                    osc.frequency.setValueAtTime(840, now + 0.18);
+                    osc.frequency.setValueAtTime(620, now + 0.36);
+                    gain.gain.setValueAtTime(0.09, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+                    osc.start(now);
+                    osc.stop(now + 0.55);
                 } else if (type === 'new_booking') {
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(523.25, now);
-                    osc.frequency.setValueAtTime(880, now + 0.18);
+                    osc.frequency.setValueAtTime(783.99, now + 0.18);
                     gain.gain.setValueAtTime(0.12, now);
                     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
                     osc.start(now);
@@ -183,36 +196,22 @@
                 } else if (type === 'called') {
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(587.33, now);
-                    osc.frequency.setValueAtTime(783.99, now + 0.16);
+                    osc.frequency.setValueAtTime(880, now + 0.16);
                     gain.gain.setValueAtTime(0.1, now);
                     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
                     osc.start(now);
                     osc.stop(now + 0.5);
-                } else if (type === 'emergency') {
-                    osc.type = 'sawtooth';
-                    osc.frequency.setValueAtTime(620, now);
-                    osc.frequency.setValueAtTime(840, now + 0.15);
-                    osc.frequency.setValueAtTime(620, now + 0.3);
-                    gain.gain.setValueAtTime(0.09, now);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-                    osc.start(now);
-                    osc.stop(now + 0.55);
                 } else {
                     osc.type = 'triangle';
-                    osc.frequency.setValueAtTime(680, now);
+                    osc.frequency.setValueAtTime(660, now);
                     gain.gain.setValueAtTime(0.05, now);
                     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
                     osc.start(now);
                     osc.stop(now + 0.18);
                 }
-            } catch (e) {
-                console.warn('Audio playback skipped:', e);
-            }
+            } catch (e) {}
         };
 
-        // =========================================================================
-        // LOCAL-TIMEZONE DATE/TIME HELPERS (Fixes GMT+8 UTC Shift)
-        // =========================================================================
         const pad2 = (n) => String(n).padStart(2, '0');
 
         const parseLocalDateTime = (val) => {
@@ -223,20 +222,12 @@
                 return isNaN(d.getTime()) ? null : d;
             }
             const str = String(val).trim();
-            const localMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
-            if (localMatch && !str.endsWith('Z')) {
-                return new Date(
-                    Number(localMatch[1]),
-                    Number(localMatch[2]) - 1,
-                    Number(localMatch[3]),
-                    Number(localMatch[4]),
-                    Number(localMatch[5]),
-                    0,
-                    0
-                );
+            const match = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+            if (match) {
+                return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), 0, 0);
             }
-            const parsed = new Date(str);
-            return isNaN(parsed.getTime()) ? null : parsed;
+            const d = new Date(str);
+            return isNaN(d.getTime()) ? null : d;
         };
 
         const toLocalISOString = (dateOrStr) => {
@@ -244,31 +235,25 @@
             return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
         };
 
-        const roundToNearest5Mins = (date) => {
-            const d = new Date(date.getTime());
-            d.setMinutes(Math.round(d.getMinutes() / 5) * 5, 0, 0);
-            return d;
+        const roundToNearest5Mins = (date = new Date()) => {
+            const ms = 5 * 60 * 1000;
+            return new Date(Math.round(date.getTime() / ms) * ms);
         };
 
-        const formatTimeOnly = (tsOrStr) => {
-            const d = parseLocalDateTime(tsOrStr);
-            if (!d) return '';
-            return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-        };
-
-        const formatDateTimeDisp = (dateTimeStr) => {
-            if (!dateTimeStr) return '';
-            const d = parseLocalDateTime(dateTimeStr);
-            if (!d) return String(dateTimeStr);
+        const formatDateTimeDisp = (val) => {
+            const d = parseLocalDateTime(val);
+            if (!d) return val ? String(val) : '—';
             const now = new Date();
-            const isToday = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-            const t = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-            return isToday ? t : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} ${t}`;
+            const hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+            if (d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+                return hm;
+            }
+            return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} ${hm}`;
         };
 
-        const formatDuration = (startTs, nowTs = Date.now()) => {
-            if (!startTs) return '0m';
-            const diffMins = Math.max(0, Math.floor((nowTs - startTs) / 60000));
+        const formatDuration = (startMs, nowMs = Date.now()) => {
+            if (!startMs) return '0m';
+            const diffMins = Math.max(0, Math.floor((nowMs - Number(startMs)) / 60000));
             const days = Math.floor(diffMins / 1440);
             const hrs = Math.floor((diffMins % 1440) / 60);
             const mins = diffMins % 60;
@@ -277,98 +262,77 @@
             return `${mins}m`;
         };
 
-        const formatMembraneLiquor = (patient) => {
-            if (!patient || patient.membrane === 'Intact') return 'MI (Intact)';
-            const liqMap = { Clear: 'CL', 'Blood stained': 'Blood' };
-            const liq = liqMap[patient.liquor] || patient.liquor || 'N/A';
-            const timeStr = patient.romTime ? ` @${formatDateTimeDisp(patient.romTime)}` : '';
-            if (patient.membrane === 'PROM_MI') return `PROM${timeStr} • ${liq}`;
-            return `${patient.membrane}${timeStr} • ${liq}`;
+        const getCensusWindows = (nowMs = Date.now()) => {
+            const now = new Date(nowMs);
+            const today8am = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
+            const liveStart = now.getTime() >= today8am.getTime()
+                ? today8am
+                : new Date(today8am.getTime() - 24 * 3600000);
+            const liveEnd = new Date(liveStart.getTime() + 24 * 3600000);
+            const prevStart = new Date(liveStart.getTime() - 24 * 3600000);
+            const prevEnd = new Date(liveStart.getTime());
+            return { liveStart, liveEnd, prevStart, prevEnd };
         };
 
-        // =========================================================================
-        // CLINICAL TRIAGE, DELIVERY MODE, PPH & 8AM–8AM CENSUS UTILITIES
-        // =========================================================================
+        const formatWindowLabel = (start, end) => {
+            const fmt = (d) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+            return `${fmt(start)} – ${fmt(end)}`;
+        };
+
         const normalizeMode = (mode) => {
             if (!mode) return 'SVD';
-            if (String(mode).toLowerCase() === 'vacuum') return 'VAD';
+            if (mode === 'Vacuum') return 'VAD';
             return mode;
         };
 
-        const isLSCSMode = (mode) => {
-            const m = normalizeMode(mode);
-            return m === 'EMLSCS' || m === 'ELLSCS';
-        };
+        const isLSCSMode = (mode) => mode === 'EMLSCS' || mode === 'ELLSCS';
 
         const classifyPPH = (mode, eblVal) => {
             const ebl = Number(eblVal);
             if (!eblVal || isNaN(ebl) || ebl <= 0) return { level: 'NONE', label: '' };
-            if (ebl > 1500) return { level: 'MASSIVE', label: 'MASSIVE PPH' };
-            const cs = isLSCSMode(mode);
-            if ((cs && ebl > 1000) || (!cs && ebl > 500)) {
-                return { level: 'PPH', label: 'PPH' };
-            }
+            if (ebl > 1500) return { level: 'MASSIVE', label: 'Massive PPH' };
+            const isCS = isLSCSMode(normalizeMode(mode));
+            if ((isCS && ebl > 1000) || (!isCS && ebl > 500)) return { level: 'PPH', label: 'PPH' };
             return { level: 'NONE', label: '' };
         };
 
         const calculatePriority = (patient) => {
-            if (!patient) return 0;
             let score = 0;
-
-            // 1. Fetal Compromise
             if (patient.ctg === 'Pathological') score += 100;
             else if (patient.ctg === 'Suspicious') score += 50;
 
-            // 2. Advanced Dilation
             const dil = Number(patient.lastVE?.dilation || 0);
             if (dil >= 9) score += 40;
             else if (dil >= 7) score += 20;
 
-            // 3. Liquor & Infection Risks
             if (patient.liquor === 'TMSL' || patient.liquor === 'Blood stained') score += 40;
             else if (patient.liquor === 'MMSL') score += 30;
             else if (patient.liquor === 'LMSL') score += 15;
 
-            const isROM = ['SROM', 'ARM', 'PROM_MI'].includes(patient.membrane);
-            if (isROM) {
-                score += 15;
-                if (patient.gbs) score += 15; // Stacks to +30 for GBS + ROM
-            }
+            const isRuptured = ['SROM', 'ARM', 'PROM_MI'].includes(patient.membrane);
+            if (isRuptured) score += 15;
+            if (patient.gbs && isRuptured) score += 15;
 
-            // 4. Ward Flow Management
-            if (Array.isArray(patient.issues) && patient.issues.some(i => String(i).includes('Prev Scar')) && dil > 4) {
-                score += 15;
-            }
-            if (patient.admissionType && String(patient.admissionType).startsWith('IOL')) {
-                score += 10;
-            }
+            const issuesArr = Array.isArray(patient.issues) ? patient.issues : [];
+            if (issuesArr.some(i => String(i).includes('Prev Scar')) && dil > 4) score += 15;
+
+            if (patient.admissionType && String(patient.admissionType).includes('IOL')) score += 10;
 
             return score + (Number(patient.manualOverride) || 0);
         };
 
-        const getCensusWindows = (nowTs = Date.now()) => {
-            const now = new Date(nowTs);
-            const liveStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
-            if (now.getHours() < 8) {
-                liveStart.setDate(liveStart.getDate() - 1);
-            }
-            const liveEnd = new Date(liveStart.getTime() + 24 * 60 * 60 * 1000);
-            const prevEnd = new Date(liveStart.getTime());
-            const prevStart = new Date(liveStart.getTime() - 24 * 60 * 60 * 1000);
-            return { liveStart, liveEnd, prevStart, prevEnd };
-        };
-
-        const formatWindowLabel = (startDate, endDate) => {
-            const fmt = (d) => `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-            return `${fmt(startDate)} → ${fmt(endDate)}`;
-        };
-
         const copyTextToClipboard = (text) => {
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text);
+                    return true;
+                }
+            } catch (e) {}
             try {
                 const ta = document.createElement('textarea');
                 ta.value = text;
                 ta.style.position = 'fixed';
-                ta.style.left = '-9999px';
+                ta.style.opacity = '0';
                 document.body.appendChild(ta);
                 ta.focus();
                 ta.select();
@@ -381,88 +345,83 @@
         };
 
         // =========================================================================
-        // LOCAL-TIMEZONE CUSTOM DATE & TIME PICKER (5-Min VE / 1-Min Delivery)
+        // REUSABLE CONTROLS: DATE/TIME PICKER & PREDICTIVE LSCS COMBOBOX
         // =========================================================================
         const CustomDateTimePicker = ({ label, value, onChange, required = false, exactMinute = false }) => {
             const parsed = parseLocalDateTime(value) || new Date();
-            const dateVal = `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}`;
-            const hourVal = pad2(parsed.getHours());
-            const rawMin = parsed.getMinutes();
-            const minVal = exactMinute ? pad2(rawMin) : pad2(Math.floor(rawMin / 5) * 5);
-
-            const emit = (newDate, newHr, newMin) => {
-                onChange(`${newDate}T${newHr}:${newMin}`);
-            };
+            const datePart = `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}`;
+            const hourPart = pad2(parsed.getHours());
+            const minPart = exactMinute ? pad2(parsed.getMinutes()) : pad2(Math.floor(parsed.getMinutes() / 5) * 5);
 
             const hours = Array.from({ length: 24 }, (_, i) => pad2(i));
-            const minutes = exactMinute
+            const mins = exactMinute
                 ? Array.from({ length: 60 }, (_, i) => pad2(i))
                 : Array.from({ length: 12 }, (_, i) => pad2(i * 5));
 
+            const updateParts = (d, h, m) => onChange(`${d}T${h}:${m}`);
+
             return (
                 <div>
-                    {label && (
-                        <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+                    <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                             {label}
                         </label>
-                    )}
-                    <div className="grid grid-cols-12 gap-2">
+                        <button
+                            type="button"
+                            onClick={() => onChange(toLocalISOString(exactMinute ? new Date() : roundToNearest5Mins(new Date())))}
+                            className="text-[10px] font-bold text-teal-600 dark:text-teal-400 hover:underline"
+                        >
+                            Set Now
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-12 gap-1.5">
                         <input
                             type="date"
                             required={required}
-                            value={dateVal}
-                            onChange={(e) => emit(e.target.value, hourVal, minVal)}
-                            className="col-span-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-2 text-xs font-mono font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-teal-500"
+                            value={datePart}
+                            onChange={(e) => updateParts(e.target.value, hourPart, minPart)}
+                            className="col-span-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-2 text-xs font-mono font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-teal-500"
                         />
                         <select
-                            value={hourVal}
-                            onChange={(e) => emit(dateVal, e.target.value, minVal)}
-                            className="col-span-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-2 text-xs font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-teal-500"
+                            value={hourPart}
+                            onChange={(e) => updateParts(datePart, e.target.value, minPart)}
+                            className="col-span-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-2 text-xs font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-teal-500"
                         >
                             {hours.map(h => <option key={h} value={h}>{h}h</option>)}
                         </select>
                         <select
-                            value={minVal}
-                            onChange={(e) => emit(dateVal, hourVal, e.target.value)}
-                            className="col-span-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-2 text-xs font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-teal-500"
+                            value={minPart}
+                            onChange={(e) => updateParts(datePart, hourPart, e.target.value)}
+                            className="col-span-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-2 text-xs font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-teal-500"
                         >
-                            {minutes.map(m => <option key={m} value={m}>:{m}</option>)}
+                            {mins.map(m => <option key={m} value={m}>:{m}</option>)}
                         </select>
                     </div>
                 </div>
             );
         };
 
-        // =========================================================================
-        // PREDICTIVE-TYPING LSCS INDICATION COMBOBOX (With Self-Learning Support)
-        // =========================================================================
-        const LSCSIndicationCombobox = ({ value, onChange, required = false, suggestions = LSCS_INDICATIONS }) => {
+        const LSCSIndicationCombobox = ({ value, onChange, suggestions = LSCS_INDICATIONS, required = false }) => {
             const [isOpen, setIsOpen] = React.useState(false);
-            const containerRef = React.useRef(null);
-
-            React.useEffect(() => {
-                const handleClickOutside = (e) => {
-                    if (containerRef.current && !containerRef.current.contains(e.target)) {
-                        setIsOpen(false);
-                    }
-                };
-                document.addEventListener('mousedown', handleClickOutside);
-                return () => document.removeEventListener('mousedown', handleClickOutside);
-            }, []);
-
             const builtInSet = React.useMemo(() => new Set(LSCS_INDICATIONS.map(i => i.toLowerCase())), []);
-            const query = (value || '').trim().toLowerCase();
+
             const filtered = React.useMemo(() => {
-                if (!query) return suggestions;
-                const starts = suggestions.filter(item => item.toLowerCase().startsWith(query));
-                const contains = suggestions.filter(item => !item.toLowerCase().startsWith(query) && item.toLowerCase().includes(query));
-                return [...starts, ...contains];
-            }, [query, suggestions]);
+                const q = (value || '').trim().toLowerCase();
+                if (!q) return suggestions.slice(0, 12);
+                const starts = [];
+                const contains = [];
+                suggestions.forEach(item => {
+                    const low = item.toLowerCase();
+                    if (low.startsWith(q)) starts.push(item);
+                    else if (low.includes(q)) contains.push(item);
+                });
+                return [...starts, ...contains].slice(0, 12);
+            }, [value, suggestions]);
 
             return (
-                <div ref={containerRef} className="relative">
+                <div className="relative">
                     <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
-                        LSCS Indication <span className="font-normal normal-case text-slate-400">(type to predict or enter custom — auto-learns)</span>
+                        LSCS Indication (Predictive — or type custom)
                     </label>
                     <div className="relative">
                         <input
@@ -470,53 +429,33 @@
                             required={required}
                             value={value}
                             onFocus={() => setIsOpen(true)}
-                            onChange={(e) => {
-                                onChange(e.target.value);
-                                setIsOpen(true);
-                            }}
-                            placeholder="e.g. Fetal Distress, Secondary Arrest, 3 Previous Scars..."
-                            className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-3 pr-9 py-2.5 text-sm font-medium text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-teal-500"
+                            onBlur={() => setTimeout(() => setIsOpen(false), 160)}
+                            onChange={(e) => { onChange(e.target.value); setIsOpen(true); }}
+                            placeholder="Type e.g. F (Fetal Distress), 2 (2 Prev Scars), B (Breech)..."
+                            className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-3.5 pr-9 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-teal-500"
                         />
-                        <button
-                            type="button"
-                            onClick={() => setIsOpen(!isOpen)}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                        >
-                            <i className={`ph-bold ${isOpen ? 'ph-caret-up' : 'ph-caret-down'}`}></i>
-                        </button>
+                        <i className="ph-bold ph-caret-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
                     </div>
-                    {isOpen && (
-                        <div className="absolute z-50 mt-1.5 w-full max-h-52 overflow-y-auto custom-scrollbar rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl py-1">
-                            {filtered.length > 0 ? (
-                                filtered.map(item => {
-                                    const isLearned = !builtInSet.has(item.toLowerCase());
-                                    return (
-                                        <button
-                                            key={item}
-                                            type="button"
-                                            onClick={() => {
-                                                onChange(item);
-                                                setIsOpen(false);
-                                            }}
-                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-teal-50 dark:hover:bg-teal-900/40 hover:text-teal-700 dark:hover:text-teal-300 flex items-center justify-between gap-2 transition"
-                                        >
-                                            <span className="truncate">{item}</span>
-                                            <span className="flex items-center gap-1.5 shrink-0">
-                                                {isLearned && (
-                                                    <span className="px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 text-[9px] font-bold uppercase">
-                                                        Learned
-                                                    </span>
-                                                )}
-                                                {value === item && <i className="ph-bold ph-check text-teal-600"></i>}
+                    {isOpen && filtered.length > 0 && (
+                        <div className="absolute z-30 mt-1 w-full max-h-52 overflow-y-auto custom-scrollbar rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl py-1">
+                            {filtered.map(item => {
+                                const isLearned = !builtInSet.has(item.toLowerCase());
+                                return (
+                                    <button
+                                        key={item}
+                                        type="button"
+                                        onMouseDown={() => { onChange(item); setIsOpen(false); }}
+                                        className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-teal-50 dark:hover:bg-teal-950/60 flex items-center justify-between gap-2 transition"
+                                    >
+                                        <span>{item}</span>
+                                        {isLearned && (
+                                            <span className="px-1.5 py-0.5 rounded bg-teal-100 dark:bg-teal-900 text-teal-700 dark:text-teal-300 text-[9px] font-bold uppercase">
+                                                Learned
                                             </span>
-                                        </button>
-                                    );
-                                })
-                            ) : (
-                                <div className="px-3 py-2.5 text-xs text-slate-500 dark:text-slate-400">
-                                    New indication <span className="font-bold text-teal-600 dark:text-teal-400">"{value}"</span> — will be saved &amp; auto-learned for future cases.
-                                </div>
-                            )}
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -524,42 +463,44 @@
         };
 
         // =========================================================================
-        // LOGIN SCREEN (Production Only)
+        // LOGIN SCREEN
         // =========================================================================
         const LoginScreen = ({ onLogin, passwords, darkMode, setDarkMode }) => {
             const [role, setRole] = React.useState('LR');
-            const [password, setPassword] = React.useState('');
+            const [pwd, setPwd] = React.useState('');
             const [error, setError] = React.useState('');
 
             const handleSubmit = (e) => {
                 e.preventDefault();
-                const expected = passwords[role];
-                if (expected && password === expected) {
+                if (passwords[role] && pwd === String(passwords[role])) {
                     setError('');
                     onLogin(role);
                 } else {
-                    setError('Incorrect password for selected department.');
+                    setError('Incorrect department password. Please try again.');
                 }
             };
 
             return (
-                <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col items-center justify-center p-4 relative">
-                    <button
-                        onClick={() => setDarkMode(!darkMode)}
-                        className="absolute top-4 right-4 p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 shadow-sm hover:bg-slate-50 transition"
-                        title="Toggle Dark Mode"
-                    >
-                        <i className={`ph-fill ${darkMode ? 'ph-sun text-amber-400' : 'ph-moon text-slate-600'} text-lg`}></i>
-                    </button>
+                <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-100 via-teal-50/40 to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+                    <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xl p-8 relative">
+                        <button
+                            type="button"
+                            onClick={() => setDarkMode(!darkMode)}
+                            className="absolute top-5 right-5 p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                            title="Toggle Dark Mode"
+                        >
+                            <i className={`ph-fill ${darkMode ? 'ph-sun text-amber-400' : 'ph-moon'}`}></i>
+                        </button>
 
-                    <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200/80 dark:border-slate-800 p-7 sm:p-8">
-                        <div className="flex flex-col items-center text-center mb-6">
+                        <div className="flex flex-col items-center text-center mb-7">
                             <div className="w-14 h-14 rounded-2xl bg-teal-600 text-white flex items-center justify-center shadow-lg shadow-teal-600/25 mb-3">
                                 <i className="ph-fill ph-heartbeat text-3xl"></i>
                             </div>
-                            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">LR Smart Board</h1>
+                            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+                                LR Smart Board
+                            </h1>
                             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-1">
-                                O&G Dept • Hospital Tengku Permaisuri Norashikin
+                                O&amp;G Department • Hospital Tengku Permaisuri Norashikin
                             </p>
                         </div>
 
@@ -568,17 +509,22 @@
                                 <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
                                     Department / Role
                                 </label>
-                                <select
-                                    value={role}
-                                    onChange={(e) => { setRole(e.target.value); setError(''); }}
-                                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-teal-500"
-                                >
-                                    <option value="LR">Labour Room (LR)</option>
-                                    <option value="PAC">PAC</option>
-                                    <option value="7A">Ward 7A</option>
-                                    <option value="7B">Ward 7B</option>
-                                    <option value="Admin">System Admin</option>
-                                </select>
+                                <div className="grid grid-cols-5 gap-1.5">
+                                    {['LR', 'PAC', '7A', '7B', 'Admin'].map(r => (
+                                        <button
+                                            key={r}
+                                            type="button"
+                                            onClick={() => { setRole(r); setError(''); }}
+                                            className={`rounded-xl py-2 text-xs font-bold border transition ${
+                                                role === r
+                                                    ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+                                                    : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                            }`}
+                                        >
+                                            {r}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
                             <div>
@@ -586,26 +532,27 @@
                                     Access Password
                                 </label>
                                 <input
-                                    type="password"
                                     required
-                                    value={password}
-                                    onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                                    placeholder="Enter department password"
-                                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-teal-500"
+                                    type="password"
+                                    value={pwd}
+                                    onChange={(e) => { setPwd(e.target.value); setError(''); }}
+                                    placeholder={`Enter ${role} password`}
+                                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
                                 />
                             </div>
 
                             {error && (
-                                <div className="rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 px-3 py-2 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2">
-                                    <i className="ph-fill ph-warning-circle text-base"></i> {error}
+                                <div className="rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 flex items-center gap-2">
+                                    <i className="ph-fill ph-warning-circle text-base"></i>
+                                    {error}
                                 </div>
                             )}
 
                             <button
                                 type="submit"
-                                className="w-full rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold py-3 text-sm shadow-md shadow-teal-600/20 transition flex items-center justify-center gap-2"
+                                className="w-full rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold py-3 text-sm shadow-md shadow-teal-600/20 transition"
                             >
-                                <i className="ph-bold ph-sign-in"></i> Sign In to Live Board
+                                Access Command Center
                             </button>
                         </form>
                     </div>
@@ -614,7 +561,7 @@
         };
 
         // =========================================================================
-        // WAITING QUEUE CARD
+        // WAITING QUEUE PATIENT CARD
         // =========================================================================
         const PatientCard = ({
             patient, canManageLR, userRole, priorityScore, waitTime, queueNumber,
@@ -623,34 +570,40 @@
             const [noteName, setNoteName] = React.useState('');
             const [wardAckName, setWardAckName] = React.useState('');
 
-            const isPatho = patient.ctg === 'Pathological' || priorityScore >= 80;
-            const isHigh = !isPatho && priorityScore >= 35;
-            const barColor = isPatho ? 'bg-rose-500' : isHigh ? 'bg-amber-500' : 'bg-teal-500';
-            const dil = Number(patient.lastVE?.dilation || 0);
+            const isHigh = priorityScore >= 50 || patient.ctg === 'Pathological';
+            const isMed = !isHigh && (priorityScore >= 20 || patient.ctg === 'Suspicious');
+            const barColor = isHigh ? 'bg-rose-500' : isMed ? 'bg-amber-500' : 'bg-teal-500';
+            const dil = Number(patient.lastVE?.dilation ?? 0);
             const dilBadgeClass = dil >= 9
                 ? 'bg-rose-600 text-white'
                 : dil >= 7
                     ? 'bg-amber-500 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200';
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100';
 
-            const isAbnormalLiq = patient.membrane !== 'Intact' && !['Clear', 'N/A', ''].includes(patient.liquor);
-            const isOwnWard = userRole === patient.location || userRole === 'Admin';
+            const memDisp = patient.membrane === 'Intact'
+                ? 'MI'
+                : `${patient.membrane === 'PROM_MI' ? 'PROM' : patient.membrane} • ${patient.liquor || 'Clear'}`;
+            const isAbnLiq = patient.membrane !== 'Intact' && !['Clear', 'N/A'].includes(patient.liquor);
+            const issuesArr = Array.isArray(patient.issues) ? patient.issues : [];
+            const canWardEdit = !canManageLR || userRole === 'Admin';
 
             return (
-                <div className={`relative rounded-2xl bg-white dark:bg-slate-900 border transition-all overflow-hidden shadow-sm hover:shadow-md ${!patient.notedBy ? 'border-amber-300 dark:border-amber-700 ring-1 ring-amber-200/70 dark:ring-amber-800/50' : 'border-slate-200/90 dark:border-slate-800'}`}>
+                <div className={`relative rounded-2xl bg-white dark:bg-slate-900 border shadow-sm overflow-hidden transition ${!patient.notedBy ? 'border-amber-300 dark:border-amber-700' : 'border-slate-200 dark:border-slate-800'}`}>
                     <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${barColor}`}></div>
-
-                    <div className="p-3.5 pl-4">
-                        <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="pl-4 pr-3.5 py-3 space-y-2.5">
+                        {/* Header Row */}
+                        <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-slate-900 dark:bg-slate-700 text-white font-mono text-[11px] font-bold shrink-0">
+                                    <span className="w-5 h-5 rounded-md bg-slate-900 dark:bg-slate-700 text-white font-mono text-[11px] font-bold flex items-center justify-center shrink-0">
                                         {queueNumber}
                                     </span>
-                                    <h3 className="font-bold text-sm text-slate-900 dark:text-white truncate">{patient.name}</h3>
+                                    <h3 className="font-extrabold text-sm text-slate-900 dark:text-white truncate">
+                                        {patient.name}
+                                    </h3>
                                     {Number(patient.manualOverride) !== 0 && (
-                                        <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${patient.manualOverride > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
-                                            MO {patient.manualOverride > 0 ? `+${patient.manualOverride}` : patient.manualOverride}
+                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold font-mono ${Number(patient.manualOverride) > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-600'}`}>
+                                            MO {Number(patient.manualOverride) > 0 ? `+${patient.manualOverride}` : patient.manualOverride}
                                         </span>
                                     )}
                                 </div>
@@ -658,181 +611,121 @@
                                     {patient.ic} • G{patient.gravida}P{patient.para} • {patient.poa}
                                 </p>
                             </div>
-
-                            <div className="flex flex-col items-end gap-1 shrink-0">
-                                <span className={`px-2 py-0.5 rounded-lg font-mono text-xs font-extrabold ${dilBadgeClass}`}>
-                                    {patient.lastVE?.dilation ?? '—'} cm
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                <span className={`px-2 py-1 rounded-xl font-mono text-xs font-extrabold ${dilBadgeClass}`}>
+                                    {dil} cm
                                 </span>
-                                <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                                    <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">{patient.location}</span>
-                                    <span className="font-mono">{waitTime}</span>
-                                </div>
                             </div>
                         </div>
 
-                        {/* Clinical Tag Row */}
-                        <div className="flex flex-wrap gap-1 mb-2.5">
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/70 dark:border-teal-800/60">
+                        {/* Meta & Clinical Tags */}
+                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
+                            <span className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                {patient.location} • {waitTime}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
                                 {patient.admissionType}
                             </span>
-                            {patient.gbs && (
-                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                                    GBS+
-                                </span>
-                            )}
-                            {patient.epidural && (
-                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                                    Epidural
-                                </span>
-                            )}
-                            {(patient.issues || []).map((issue, idx) => (
-                                <span key={idx} className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200/70 dark:border-rose-800/60">
-                                    {issue}
+                            <span className={`px-2 py-0.5 rounded-lg ${patient.ctg === 'Normal' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300' : patient.ctg === 'Suspicious' ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300' : 'bg-rose-600 text-white'}`}>
+                                CTG: {patient.ctg}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-lg ${isAbnLiq ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
+                                {memDisp}
+                            </span>
+                            {patient.gbs && <span className="px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300">GBS+</span>}
+                            {patient.epidural && <span className="px-2 py-0.5 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">Epidural</span>}
+                            {issuesArr.map(iss => (
+                                <span key={iss} className="px-2 py-0.5 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200/70 dark:border-rose-800">
+                                    {iss}
                                 </span>
                             ))}
                         </div>
 
-                        {/* Clinical Metrics Strip */}
-                        <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 p-2 text-[11px] border border-slate-100 dark:border-slate-800 mb-2.5">
-                            <div>
-                                <span className="text-slate-400 font-semibold">VE:</span>{' '}
-                                <span className="font-semibold text-slate-700 dark:text-slate-200">{patient.lastVE?.cervix || '—'}</span>
-                                <span className="text-[10px] font-mono text-slate-400 ml-1">@{formatDateTimeDisp(patient.lastVE?.time)}</span>
-                            </div>
-                            <div className="text-right">
-                                <span className="text-slate-400 font-semibold">CTG:</span>{' '}
-                                <span className={`font-bold ${patient.ctg === 'Pathological' ? 'text-rose-600 dark:text-rose-400' : patient.ctg === 'Suspicious' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                                    {patient.ctg}
-                                </span>
-                            </div>
-                            <div className="col-span-2 flex justify-between items-center border-t border-slate-200/60 dark:border-slate-700/60 pt-1">
-                                <span>
-                                    <span className="text-slate-400 font-semibold">Memb:</span>{' '}
-                                    <span className={isAbnormalLiq ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-700 dark:text-slate-200 font-medium'}>
-                                        {formatMembraneLiquor(patient)}
-                                    </span>
-                                </span>
-                                <span className="text-[10px] font-mono text-slate-400">Pts {priorityScore}</span>
-                            </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                            <span>VE: {patient.lastVE?.cervix || '—'} @ {formatDateTimeDisp(patient.lastVE?.time)}</span>
+                            <span>By: <strong className="text-slate-700 dark:text-slate-200">{patient.bookedBy || '—'}</strong></span>
                         </div>
 
-                        {/* Status / Actions */}
+                        {/* Status / Actions Footer */}
                         {patient.status === 'CALLED' ? (
-                            <div className="rounded-xl bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800 p-2.5">
-                                <div className="flex items-center justify-between text-xs font-bold text-sky-800 dark:text-sky-300 mb-2">
-                                    <span className="flex items-center gap-1.5">
-                                        <i className="ph-fill ph-bell-ringing text-sky-600 animate-bounce"></i>
-                                        CALLED TO {patient.calledToBed}
+                            <div className="rounded-xl bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800 p-2.5 space-y-2">
+                                <div className="flex items-center justify-between text-[11px] font-extrabold text-sky-800 dark:text-sky-200">
+                                    <span className="flex items-center gap-1">
+                                        <i className="ph-fill ph-bell-ringing animate-bounce"></i> CALLED TO {patient.calledToBed}
                                     </span>
-                                    <span className="font-mono text-[11px]">{formatTimeOnly(patient.callTime)}</span>
+                                    <span className="font-mono">@ {formatDateTimeDisp(patient.callTime)}</span>
                                 </div>
-                                {!canManageLR || userRole === 'Admin' ? (
+                                {!canManageLR ? (
                                     <div className="flex gap-1.5">
                                         <input
-                                            type="text"
                                             value={wardAckName}
                                             onChange={(e) => setWardAckName(e.target.value)}
                                             placeholder="Sent by (Staff Name)"
-                                            className="flex-1 rounded-lg border border-sky-300 dark:border-sky-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-sky-500"
+                                            className="flex-1 rounded-lg border border-sky-300 dark:border-sky-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs outline-none"
                                         />
                                         <button
-                                            onClick={() => wardAckName.trim() && onWardSend(patient.id, wardAckName.trim())}
-                                            className="rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-3 py-1.5 transition"
+                                            onClick={() => { if (wardAckName.trim()) onWardSend(patient.id, wardAckName.trim()); }}
+                                            className="rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold px-3 py-1.5 transition"
                                         >
-                                            Send Now
+                                            Confirm Send
                                         </button>
                                     </div>
                                 ) : (
-                                    <div className="text-center text-[11px] font-semibold text-sky-700 dark:text-sky-300 py-0.5">
-                                        Awaiting Ward transfer confirmation...
-                                    </div>
+                                    <p className="text-[10px] font-semibold text-sky-700 dark:text-sky-300">Awaiting ward transfer confirmation...</p>
                                 )}
                             </div>
                         ) : (
-                            <div className="space-y-2">
+                            <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
                                 <div className="flex items-center gap-1.5">
-                                    {canManageLR ? (
+                                    {canManageLR && (
                                         <>
-                                            <button
-                                                onClick={onCall}
-                                                className="flex-1 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold py-2 px-3 transition flex items-center justify-center gap-1.5 shadow-sm"
-                                            >
-                                                <i className="ph-bold ph-bed"></i> Call to Bed
+                                            <button onClick={onCall} className="flex-1 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold py-1.5 transition shadow-sm">
+                                                Call to Bed
                                             </button>
-                                            <button
-                                                onClick={onUpdate}
-                                                className="rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold py-2 px-2.5 transition"
-                                                title="Update VE"
-                                            >
-                                                VE
-                                            </button>
-                                            <button
-                                                onClick={onBumpUp}
-                                                className="rounded-xl bg-slate-100 hover:bg-amber-100 dark:bg-slate-800 dark:hover:bg-amber-900/50 text-slate-600 dark:text-slate-300 hover:text-amber-700 py-2 px-2 transition"
-                                                title="Nudge Priority Up (+10)"
-                                            >
+                                            <button onClick={onBumpUp} className="p-1.5 rounded-xl bg-slate-100 hover:bg-amber-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300" title="Nudge Priority UP">
                                                 <i className="ph-bold ph-arrow-up"></i>
                                             </button>
-                                            <button
-                                                onClick={onBumpDown}
-                                                className="rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 py-2 px-2 transition"
-                                                title="Nudge Priority Down (-10)"
-                                            >
+                                            <button onClick={onBumpDown} className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300" title="Nudge Priority DOWN">
                                                 <i className="ph-bold ph-arrow-down"></i>
                                             </button>
                                         </>
-                                    ) : (
+                                    )}
+                                    {canWardEdit && (
                                         <>
-                                            <button
-                                                onClick={onUpdate}
-                                                className="flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs font-bold py-2 px-3 transition flex items-center justify-center gap-1.5"
-                                            >
-                                                <i className="ph-bold ph-pencil-simple"></i> Update VE / CTG
+                                            <button onClick={onUpdate} className="flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold py-1.5 transition">
+                                                Update VE
                                             </button>
-                                            {isOwnWard && (
-                                                <button
-                                                    onClick={onCancel}
-                                                    className="rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 text-xs font-bold py-2 px-3 transition"
-                                                >
-                                                    Cancel
-                                                </button>
-                                            )}
+                                            <button onClick={onCancel} className="rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300 text-xs font-bold px-3 py-1.5 transition">
+                                                Cancel
+                                            </button>
                                         </>
                                     )}
                                 </div>
 
-                                {/* Audit & Acknowledge Strip */}
-                                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] flex flex-col gap-1.5">
-                                    <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-                                        <span>Booked: <strong className="text-slate-700 dark:text-slate-200">{patient.bookedBy || 'Staff'}</strong></span>
-                                        {patient.notedBy ? (
-                                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                                                <i className="ph-fill ph-check-circle"></i> Ack: {patient.notedBy} @{formatTimeOnly(patient.notedTime)}
-                                            </span>
-                                        ) : (
-                                            <span className="text-amber-600 dark:text-amber-400 font-bold animate-pulse-soft">
-                                                Awaiting LR Ack
-                                            </span>
-                                        )}
+                                {patient.notedBy ? (
+                                    <div className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                        <i className="ph-fill ph-check-circle"></i> Noted by {patient.notedBy} @ {formatDateTimeDisp(patient.notedTime)}
                                     </div>
-                                    {!patient.notedBy && canManageLR && (
-                                        <div className="flex gap-1.5">
-                                            <input
-                                                type="text"
-                                                value={noteName}
-                                                onChange={(e) => setNoteName(e.target.value)}
-                                                placeholder="Acknowledge as (MO/SN)"
-                                                className="flex-1 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50/40 dark:bg-slate-800 px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-amber-400"
-                                            />
-                                            <button
-                                                onClick={() => noteName.trim() && onNoteBooking(patient.id, noteName.trim())}
-                                                className="rounded-lg bg-amber-500 hover:bg-amber-400 text-white text-xs font-bold px-3 py-1.5 transition"
-                                            >
-                                                Ack
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
+                                ) : canManageLR ? (
+                                    <div className="flex gap-1.5">
+                                        <input
+                                            value={noteName}
+                                            onChange={(e) => setNoteName(e.target.value)}
+                                            placeholder="Acknowledge (MO / SN Name)"
+                                            className="flex-1 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-slate-800 px-2.5 py-1 text-xs outline-none"
+                                        />
+                                        <button
+                                            onClick={() => { if (noteName.trim()) onNoteBooking(patient.id, noteName.trim()); }}
+                                            className="rounded-lg bg-amber-500 hover:bg-amber-400 text-white text-[11px] font-bold px-2.5 py-1 transition"
+                                        >
+                                            Ack
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 animate-pulse-soft">
+                                        Awaiting Labour Room acknowledgement...
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -841,33 +734,38 @@
         };
 
         // =========================================================================
-        // BED SLOT CARD (Active, Escalation, and Compact Overflow Holding Bay)
+        // LABOUR ROOM BED SLOT CARD (3-Zone Aware + Partogram Bar + PPH Highlight)
         // =========================================================================
         const BedSlot = ({
-            bedName, patient, incoming, canManageLR, tvMode, compact = false, currentTime,
+            bedName, patient, incoming, canManageLR, tvMode, compact, currentTime,
             onUpdate, onMove, onDeliver, onEditDelivery, onSendToOT, onClear, onArrived
         }) => {
-            const isVacant = !patient;
-            const isUrgentBed = bedName.includes('(Urg)');
             const isOT = bedName === 'OT';
-            const isISO = bedName.includes('(ISO)');
+            const isISO = bedName.includes('ISO');
 
-            // Incoming / En Route State
-            if (incoming && isVacant) {
+            // Incoming State (CALLED / EN_ROUTE)
+            if (!patient && incoming) {
                 const isEnRoute = incoming.status === 'EN_ROUTE';
                 return (
-                    <div className={`rounded-2xl border-2 border-dashed p-3.5 flex flex-col items-center justify-center text-center transition ${compact ? 'min-h-[110px]' : 'min-h-[168px]'} ${isEnRoute ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-400 text-indigo-800 dark:text-indigo-200' : 'bg-sky-50/70 dark:bg-sky-950/40 border-sky-400 text-sky-800 dark:text-sky-200'}`}>
-                        <span className="text-xs font-extrabold uppercase tracking-wide mb-1">{bedName}</span>
-                        <p className="text-xs font-bold leading-snug">{incoming.name}</p>
-                        <p className="text-[10px] font-mono opacity-80 mt-0.5">
-                            {isEnRoute ? `En route • Sent by ${incoming.wardNotedBy}` : `Called ${formatDuration(incoming.callTime, currentTime)} ago`}
-                        </p>
-                        {isEnRoute && canManageLR && !tvMode && (
+                    <div className={`rounded-2xl border-2 border-dashed p-4 flex flex-col justify-between min-h-[145px] transition ${isEnRoute ? 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-400 dark:border-indigo-700' : 'bg-sky-50/70 dark:bg-sky-950/30 border-sky-400 dark:border-sky-700'}`}>
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-extrabold text-slate-800 dark:text-white">{bedName}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isEnRoute ? 'bg-indigo-600 text-white' : 'bg-sky-600 text-white'}`}>
+                                {isEnRoute ? 'En Route' : 'Called'}
+                            </span>
+                        </div>
+                        <div className="my-2">
+                            <p className="text-sm font-extrabold text-slate-900 dark:text-white truncate">{incoming.name}</p>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                {isEnRoute ? `Sent by ${incoming.wardNotedBy}` : `Called ${formatDuration(incoming.callTime, currentTime)} ago`}
+                            </p>
+                        </div>
+                        {canManageLR && !tvMode && isEnRoute && (
                             <button
                                 onClick={() => onArrived(incoming.id)}
-                                className="mt-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3.5 py-1.5 shadow-sm transition"
+                                className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2 shadow-sm transition"
                             >
-                                Mark Arrived
+                                Confirm Patient Arrived
                             </button>
                         )}
                     </div>
@@ -875,206 +773,169 @@
             }
 
             // Vacant State
-            if (isVacant) {
+            if (!patient) {
                 return (
-                    <div className={`rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 p-3 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 ${compact ? 'min-h-[104px]' : 'min-h-[168px]'}`}>
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                            <i className={`ph ${isOT ? 'ph-first-aid-kit' : isISO ? 'ph-shield-warning' : 'ph-bed'} text-lg`}></i>
-                            <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{bedName}</span>
-                        </div>
-                        <span className="text-[11px]">Available</span>
+                    <div className={`rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 bg-white/40 dark:bg-slate-900/30 p-4 flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 ${compact ? 'min-h-[100px]' : 'min-h-[145px]'}`}>
+                        <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{bedName}</span>
+                        <span className="text-[11px] mt-0.5">Vacant</span>
                     </div>
                 );
             }
 
             const isDelivered = patient.status === 'DELIVERED';
-            const pph = isDelivered ? classifyPPH(patient.deliveryMode, patient.ebl) : { level: 'NONE' };
-            const dil = Number(patient.lastVE?.dilation || 0);
-            const dilColor = dil >= 9
-                ? 'bg-rose-600 text-white'
-                : dil >= 7
-                    ? 'bg-amber-500 text-white'
-                    : 'bg-teal-600 text-white';
+            const mode = normalizeMode(patient.deliveryMode);
+            const pph = isDelivered ? classifyPPH(mode, patient.ebl) : { level: 'NONE', label: '' };
 
-            // Partogram Next Review progress calculation (4-hour window)
-            let reviewProgress = 0;
-            let isOverdue = false;
-            let isDueSoon = false;
-            const nextReviewDate = parseLocalDateTime(patient.lastVE?.nextReview);
-            if (!isDelivered && nextReviewDate) {
-                const remainingMs = nextReviewDate.getTime() - currentTime;
-                const totalWindowMs = 4 * 60 * 60 * 1000;
-                if (remainingMs <= 0) {
-                    isOverdue = true;
-                    reviewProgress = 100;
-                } else {
-                    isDueSoon = remainingMs <= 30 * 60000;
-                    reviewProgress = Math.min(100, Math.max(8, ((totalWindowMs - remainingMs) / totalWindowMs) * 100));
-                }
-            }
-
-            const cardBorder = isDelivered
-                ? pph.level === 'MASSIVE'
-                    ? 'border-rose-500 bg-rose-50/70 dark:bg-rose-950/40 ring-2 ring-rose-500/30'
+            // Delivered Holding Card
+            if (isDelivered) {
+                const borderStyle = pph.level === 'MASSIVE'
+                    ? 'border-rose-400 dark:border-rose-700 bg-rose-50/70 dark:bg-rose-950/30'
                     : pph.level === 'PPH'
-                        ? 'border-amber-400 bg-amber-50/60 dark:bg-amber-950/30'
-                        : 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/25'
-                : isOverdue
-                    ? 'border-rose-400 dark:border-rose-700 bg-white dark:bg-slate-900 ring-1 ring-rose-300 dark:ring-rose-800'
-                    : isOT
-                        ? 'border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900'
-                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900';
+                        ? 'border-amber-400 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-950/25'
+                        : 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/25';
 
-            return (
-                <div className={`relative rounded-2xl border shadow-sm flex flex-col justify-between overflow-hidden transition ${cardBorder} ${compact ? 'p-3 min-h-[118px]' : 'p-3.5 min-h-[168px]'}`}>
-                    <div>
-                        {/* Card Top Header */}
-                        <div className="flex items-start justify-between gap-2 mb-1.5">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={`px-2 py-0.5 rounded-lg text-[11px] font-bold ${isDelivered ? 'bg-emerald-600 text-white' : isUrgentBed || isOT ? 'bg-rose-600 text-white' : isISO ? 'bg-amber-600 text-white' : 'bg-slate-900 dark:bg-slate-700 text-white'}`}>
-                                    {bedName}
-                                </span>
-                                {!isDelivered && patient.admissionTime && (
-                                    <span className="text-[10px] font-mono font-semibold text-slate-500 dark:text-slate-400">
-                                        {formatDuration(patient.admissionTime, currentTime)}
-                                    </span>
-                                )}
-                            </div>
-
-                            {isDelivered ? (
+                return (
+                    <div className={`rounded-2xl border p-3.5 shadow-sm flex flex-col justify-between gap-2.5 ${borderStyle}`}>
+                        <div>
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-extrabold text-emerald-800 dark:text-emerald-300">{bedName}</span>
                                 <div className="flex items-center gap-1">
-                                    <span className="px-2 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 font-mono text-[11px] font-bold">
-                                        {normalizeMode(patient.deliveryMode)}
+                                    <span className="px-2 py-0.5 rounded-lg bg-emerald-600 text-white font-mono text-[10px] font-bold">
+                                        {mode}
                                     </span>
                                     {pph.level !== 'NONE' && (
-                                        <span className={`px-1.5 py-0.5 rounded-lg text-[10px] font-extrabold ${pph.level === 'MASSIVE' ? 'bg-rose-600 text-white animate-pulse' : 'bg-amber-500 text-white'}`}>
+                                        <span className={`px-1.5 py-0.5 rounded-lg text-[10px] font-extrabold text-white ${pph.level === 'MASSIVE' ? 'bg-rose-600' : 'bg-amber-500'}`}>
                                             {pph.label}
                                         </span>
                                     )}
                                 </div>
-                            ) : (
-                                <span className={`px-2.5 py-0.5 rounded-xl font-mono text-sm font-extrabold shadow-sm ${dilColor}`}>
-                                    {patient.lastVE?.dilation ?? '—'} cm
-                                </span>
+                            </div>
+                            <h3 className="font-extrabold text-sm text-slate-900 dark:text-white mt-1.5 truncate">{patient.name}</h3>
+                            <p className="text-[11px] font-mono text-slate-600 dark:text-slate-400">
+                                Born @ {formatDateTimeDisp(patient.deliveryTime)} {patient.ebl ? `• EBL ${patient.ebl}mL` : ''}
+                            </p>
+                            {patient.lscsIndication && (
+                                <p className="text-[10px] text-slate-600 dark:text-slate-300 mt-0.5 truncate">
+                                    Ind: {patient.lscsIndication}
+                                </p>
                             )}
                         </div>
 
-                        {/* Patient Name & ID */}
-                        <h3 className={`font-bold text-slate-900 dark:text-white leading-snug truncate ${tvMode ? 'text-base' : 'text-sm'}`}>
-                            {patient.name}
-                        </h3>
-                        <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mb-2">
-                            G{patient.gravida}P{patient.para} • {patient.poa} {patient.ic ? `• ${patient.ic}` : ''}
-                        </p>
-
-                        {/* Body Content */}
-                        {isDelivered ? (
-                            <div className="rounded-xl bg-white/80 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800 px-2.5 py-1.5 text-[11px] space-y-0.5 mb-2">
-                                <div className="flex justify-between">
-                                    <span className="text-slate-500">Delivered:</span>
-                                    <span className="font-mono font-bold text-slate-800 dark:text-slate-100">{formatDateTimeDisp(patient.deliveryTime)}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-slate-500">EBL:</span>
-                                    <span className={`font-mono font-bold ${pph.level === 'MASSIVE' ? 'text-rose-600 dark:text-rose-400' : pph.level === 'PPH' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-slate-200'}`}>
-                                        {patient.ebl ? `${patient.ebl} mL` : 'Not recorded'}
-                                    </span>
-                                </div>
-                                {patient.lscsIndication && (
-                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">Ind: {patient.lscsIndication}</p>
-                                )}
+                        {canManageLR && !tvMode && (
+                            <div className="flex gap-1.5 pt-2 border-t border-black/5 dark:border-white/10">
+                                <button onClick={onEditDelivery} className="rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold px-2.5 py-1.5 transition">
+                                    Edit
+                                </button>
+                                <button onClick={onMove} className="rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold px-2.5 py-1.5 transition">
+                                    Move
+                                </button>
+                                <button onClick={onClear} className="flex-1 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-[11px] font-bold py-1.5 transition">
+                                    Transfer Ward
+                                </button>
                             </div>
-                        ) : (
-                            <div className="space-y-1.5 mb-2">
-                                <div className="flex items-center justify-between text-[11px]">
-                                    <span className="text-slate-600 dark:text-slate-300 truncate max-w-[65%]">{formatMembraneLiquor(patient)}</span>
-                                    <span className={`font-bold ${patient.ctg === 'Pathological' ? 'text-rose-600' : patient.ctg === 'Suspicious' ? 'text-amber-600' : 'text-emerald-600'}`}>
-                                        CTG: {patient.ctg}
+                        )}
+                    </div>
+                );
+            }
+
+            // Active IN_LR Card with Partogram Progress Bar
+            const dil = Number(patient.lastVE?.dilation ?? 0);
+            const dilColor = dil >= 9
+                ? 'bg-rose-600 text-white'
+                : dil >= 7
+                    ? 'bg-amber-500 text-white'
+                    : 'bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-200';
+
+            const veDate = parseLocalDateTime(patient.lastVE?.time);
+            const nextDate = parseLocalDateTime(patient.lastVE?.nextReview);
+            let progressPct = 0;
+            let isOverdue = false;
+            let isNearDue = false;
+            if (veDate && nextDate && nextDate.getTime() > veDate.getTime()) {
+                const totalSpan = nextDate.getTime() - veDate.getTime();
+                const remaining = nextDate.getTime() - currentTime;
+                isOverdue = remaining <= 0;
+                isNearDue = remaining > 0 && remaining <= 30 * 60000;
+                progressPct = Math.max(0, Math.min(100, (remaining / totalSpan) * 100));
+            }
+
+            const memDisp = patient.membrane === 'Intact'
+                ? 'MI'
+                : `${patient.membrane === 'PROM_MI' ? 'PROM' : patient.membrane} • ${patient.liquor || 'Clear'}`;
+            const isAbnLiq = patient.membrane !== 'Intact' && !['Clear', 'N/A'].includes(patient.liquor);
+
+            return (
+                <div className={`relative rounded-2xl bg-white dark:bg-slate-900 border shadow-sm overflow-hidden flex flex-col justify-between ${isOverdue ? 'border-rose-400 dark:border-rose-700' : isOT ? 'border-rose-300 dark:border-rose-800' : isISO ? 'border-amber-300 dark:border-amber-800' : 'border-slate-200 dark:border-slate-800'}`}>
+                    <div className="p-3.5 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                    <span className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold ${isOT ? 'bg-rose-600 text-white' : isISO ? 'bg-amber-500 text-white' : 'bg-slate-900 dark:bg-slate-700 text-white'}`}>
+                                        {bedName}
+                                    </span>
+                                    <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400">
+                                        {formatDuration(patient.admissionTime || patient.bookingTime, currentTime)}
                                     </span>
                                 </div>
-                                {nextReviewDate && (
-                                    <div className={`flex items-center justify-between text-[11px] font-mono ${isOverdue ? 'text-rose-600 dark:text-rose-400 font-bold' : isDueSoon ? 'text-amber-600 font-bold' : 'text-slate-500 dark:text-slate-400'}`}>
-                                        <span className="flex items-center gap-1">
-                                            <i className={`ph-fill ${isOverdue ? 'ph-warning-circle' : 'ph-clock'}`}></i>
-                                            {isOverdue ? 'Review OVERDUE' : 'Next Review'}
-                                        </span>
-                                        <span>{formatDateTimeDisp(patient.lastVE?.nextReview)}</span>
-                                    </div>
+                                <h3 className={`font-extrabold text-slate-900 dark:text-white truncate mt-1.5 ${tvMode ? 'text-base' : 'text-sm'}`}>
+                                    {patient.name}
+                                </h3>
+                                <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                                    G{patient.gravida}P{patient.para} • {patient.poa} • {patient.admissionType}
+                                </p>
+                            </div>
+                            <span className={`px-2.5 py-1 rounded-xl font-mono font-extrabold shrink-0 ${tvMode ? 'text-base' : 'text-xs'} ${dilColor}`}>
+                                {dil} cm
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-1.5 text-[11px] bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2">
+                            <div>
+                                <span className="text-slate-400 font-semibold">CTG: </span>
+                                <span className={`font-bold ${patient.ctg === 'Normal' ? 'text-emerald-600 dark:text-emerald-400' : patient.ctg === 'Suspicious' ? 'text-amber-600' : 'text-rose-600'}`}>
+                                    {patient.ctg}
+                                </span>
+                            </div>
+                            <div className="truncate">
+                                <span className="text-slate-400 font-semibold">Memb: </span>
+                                <span className={`font-bold ${isAbnLiq ? 'text-rose-600' : 'text-slate-700 dark:text-slate-200'}`}>
+                                    {memDisp}
+                                </span>
+                            </div>
+                            <div className="col-span-2 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-0.5 border-t border-slate-200/60 dark:border-slate-700/60">
+                                <span>VE @ {formatDateTimeDisp(patient.lastVE?.time)}</span>
+                                <span className={`font-mono font-bold ${isOverdue ? 'text-rose-600 animate-pulse-soft' : isNearDue ? 'text-amber-600' : ''}`}>
+                                    {nextDate ? (isOverdue ? 'OVERDUE' : `Rev ${formatDateTimeDisp(nextDate)}`) : ''}
+                                </span>
+                            </div>
+                        </div>
+
+                        {canManageLR && !tvMode && (
+                            <div className="flex items-center gap-1 pt-1">
+                                <button onClick={onUpdate} className="flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[11px] font-bold py-1.5 transition">
+                                    VE
+                                </button>
+                                <button onClick={onMove} className="rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[11px] font-bold px-2.5 py-1.5 transition">
+                                    Move
+                                </button>
+                                {!isOT && (
+                                    <button onClick={onSendToOT} className="rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-[11px] font-bold px-2.5 py-1.5 transition">
+                                        OT
+                                    </button>
                                 )}
+                                <button onClick={onDeliver} className="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold py-1.5 transition shadow-sm">
+                                    Deliver
+                                </button>
                             </div>
                         )}
                     </div>
 
-                    {/* Action Bar (hidden in TV Mode) */}
-                    {!tvMode && (
-                        <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800 flex items-center gap-1.5 mt-auto">
-                            {canManageLR ? (
-                                isDelivered ? (
-                                    <>
-                                        <button
-                                            onClick={onEditDelivery}
-                                            className="rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold py-1.5 px-2.5 transition"
-                                        >
-                                            Edit
-                                        </button>
-                                        <button
-                                            onClick={onMove}
-                                            className="rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold py-1.5 px-2.5 transition"
-                                            title="Move to Overflow"
-                                        >
-                                            Move
-                                        </button>
-                                        <button
-                                            onClick={onClear}
-                                            className="flex-1 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-[11px] font-bold py-1.5 px-2.5 transition flex items-center justify-center gap-1"
-                                        >
-                                            <i className="ph-bold ph-sign-out"></i> Transfer to ward
-                                        </button>
-                                    </>
-                                ) : (
-                                    <>
-                                        <button
-                                            onClick={onUpdate}
-                                            className="flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold py-1.5 transition"
-                                        >
-                                            VE
-                                        </button>
-                                        <button
-                                            onClick={onMove}
-                                            className="rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold py-1.5 px-2.5 transition"
-                                        >
-                                            Move
-                                        </button>
-                                        {bedName !== 'OT' && (
-                                            <button
-                                                onClick={onSendToOT}
-                                                className="rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 text-[11px] font-bold py-1.5 px-2.5 transition"
-                                            >
-                                                OT
-                                            </button>
-                                        )}
-                                        <button
-                                            onClick={onDeliver}
-                                            className="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold py-1.5 transition"
-                                        >
-                                            Deliver
-                                        </button>
-                                    </>
-                                )
-                            ) : (
-                                <div className="w-full text-center text-[11px] font-semibold text-slate-400 py-0.5">
-                                    {isDelivered ? 'Delivered • Awaiting Transfer' : 'Active in Labour Room'}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Draining Partogram Progress Bar along bottom edge */}
-                    {!isDelivered && nextReviewDate && (
-                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100 dark:bg-slate-800">
+                    {/* Partogram Progress Bar */}
+                    {nextDate && (
+                        <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800">
                             <div
-                                className={`h-full transition-all duration-500 ${isOverdue ? 'bg-rose-500 animate-pulse' : isDueSoon ? 'bg-amber-500' : 'bg-teal-500'}`}
-                                style={{ width: `${reviewProgress}%` }}
+                                className={`h-full transition-all duration-500 ${isOverdue ? 'w-full bg-rose-500 animate-pulse' : isNearDue ? 'bg-amber-500' : 'bg-teal-500'}`}
+                                style={{ width: isOverdue ? '100%' : `${progressPct}%` }}
                             ></div>
                         </div>
                     )}
@@ -1083,32 +944,28 @@
         };
 
         // =========================================================================
-        // 2-COLUMN CALL / MOVE BED MODAL (Mirrors Physical Ward Layout)
+        // ASSIGN / MOVE BED MODAL (2-Column Physical Ward Layout)
         // =========================================================================
-        const AssignBedModal = ({ patient, activePatients, isMove = false, onClose, onConfirm }) => {
+        const AssignBedModal = ({ patient, isMove, activePatients, onClose, onConfirm }) => {
             const renderBedBtn = (bed) => {
-                const isOccupied = activePatients.some(p => p.id !== patient.id && p.assignedBed === bed && (p.status === 'IN_LR' || p.status === 'DELIVERED'));
-                const isReserved = activePatients.some(p => p.id !== patient.id && (p.status === 'CALLED' || p.status === 'EN_ROUTE') && p.calledToBed === bed);
-                const isCurrent = patient.assignedBed === bed;
-                const disabled = isOccupied || isReserved || isCurrent;
-                const isUrg = bed.includes('(Urg)') || bed === 'OT';
-
+                const isOccupied = activePatients.some(p => p.assignedBed === bed && (p.status === 'IN_LR' || p.status === 'DELIVERED'));
+                const isIncoming = activePatients.some(p => p.calledToBed === bed && (p.status === 'CALLED' || p.status === 'EN_ROUTE'));
+                const isCurrent = isMove && patient.assignedBed === bed;
+                const disabled = isOccupied || isIncoming || isCurrent;
                 return (
                     <button
                         key={bed}
                         disabled={disabled}
                         onClick={() => onConfirm(bed)}
-                        className={`w-full rounded-xl border p-2.5 text-left transition flex items-center justify-between ${
+                        className={`w-full rounded-xl border px-3 py-2.5 text-left transition flex items-center justify-between ${
                             disabled
                                 ? 'bg-slate-100 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 text-slate-400 cursor-not-allowed'
-                                : isUrg
-                                    ? 'bg-rose-50/70 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 hover:bg-rose-100'
-                                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 hover:border-teal-500 hover:bg-teal-50/50 dark:hover:bg-teal-950/40'
+                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-teal-500 hover:bg-teal-50/60 dark:hover:bg-teal-950/40 text-slate-800 dark:text-slate-100'
                         }`}
                     >
                         <span className="text-xs font-bold">{bed}</span>
                         <span className="text-[10px] font-semibold">
-                            {isCurrent ? 'Current' : isOccupied ? 'Occupied' : isReserved ? 'Incoming' : 'Select'}
+                            {isCurrent ? 'Current' : isOccupied ? 'Occupied' : isIncoming ? 'Incoming' : 'Open'}
                         </span>
                     </button>
                 );
@@ -1122,27 +979,19 @@
                                 <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
                                     {isMove ? 'Move Patient to Bed' : 'Call Patient to Bed'}
                                 </h2>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{patient.name}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">{patient.name}</p>
                             </div>
-                            <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                            <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600">
                                 <i className="ph-bold ph-x text-lg"></i>
                             </button>
                         </div>
-
-                        <div className="grid grid-cols-2 gap-3 mb-5">
-                            <div className="space-y-2">
-                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">Left Wing</p>
-                                {LR_BEDS_LEFT.map(renderBedBtn)}
-                            </div>
-                            <div className="space-y-2">
-                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">Right Wing</p>
-                                {LR_BEDS_RIGHT.map(renderBedBtn)}
-                            </div>
+                        <div className="grid grid-cols-2 gap-2.5 mb-5">
+                            <div className="space-y-2">{LR_BEDS_LEFT.map(renderBedBtn)}</div>
+                            <div className="space-y-2">{LR_BEDS_RIGHT.map(renderBedBtn)}</div>
                         </div>
-
                         <button
                             onClick={onClose}
-                            className="w-full rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold py-2.5 text-xs transition"
+                            className="w-full rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold py-2.5 text-xs transition"
                         >
                             Cancel
                         </button>
@@ -1152,7 +1001,7 @@
         };
 
         // =========================================================================
-        // RECORD / EDIT DELIVERY MODAL (Exact 1-Min Time + Mode + Indication + EBL)
+        // RECORD / EDIT DELIVERY MODAL (Exact 1-Min Time + Mode + Indication + EBL + Digital Delivery Book)
         // =========================================================================
         const DeliveryModal = ({ patient, indicationOptions = LSCS_INDICATIONS, onClose, onConfirm }) => {
             const isEdit = Boolean(patient.deliveryTime);
@@ -1163,6 +1012,16 @@
             const [lscsIndication, setLscsIndication] = React.useState(patient.lscsIndication || '');
             const [ebl, setEbl] = React.useState(patient.ebl !== undefined && patient.ebl !== null && patient.ebl !== '' ? String(patient.ebl) : '');
 
+            // Digital Delivery Book fields (G&P auto-carried from booking; baby fields optional for speed)
+            const [gravida, setGravida] = React.useState(patient.gravida !== undefined && patient.gravida !== null ? String(patient.gravida) : '');
+            const [para, setPara] = React.useState(patient.para !== undefined && patient.para !== null ? String(patient.para) : '');
+            const [race, setRace] = React.useState(patient.race || '');
+            const [babyGender, setBabyGender] = React.useState(patient.babyGender || '');
+            const [birthWeight, setBirthWeight] = React.useState(patient.birthWeight !== undefined && patient.birthWeight !== null ? String(patient.birthWeight) : '');
+            const [apgar1, setApgar1] = React.useState(patient.apgar1 !== undefined && patient.apgar1 !== null ? String(patient.apgar1) : '');
+            const [apgar5, setApgar5] = React.useState(patient.apgar5 !== undefined && patient.apgar5 !== null ? String(patient.apgar5) : '');
+            const [dcc, setDcc] = React.useState(patient.dcc || '');
+
             const isCS = isLSCSMode(deliveryMode);
             const pphPreview = classifyPPH(deliveryMode, ebl);
 
@@ -1172,13 +1031,21 @@
                     deliveryTime,
                     deliveryMode,
                     lscsIndication: isCS ? lscsIndication.trim() : '',
-                    ebl: ebl !== '' ? Number(ebl) : ''
+                    ebl: ebl !== '' ? Number(ebl) : '',
+                    gravida: gravida !== '' ? Number(gravida) : '',
+                    para: para !== '' ? Number(para) : '',
+                    race,
+                    babyGender,
+                    birthWeight: birthWeight !== '' ? Number(birthWeight) : '',
+                    apgar1: apgar1 !== '' ? Number(apgar1) : '',
+                    apgar5: apgar5 !== '' ? Number(apgar5) : '',
+                    dcc
                 });
             };
 
             return (
                 <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-                    <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 my-auto">
+                    <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 my-auto max-h-[92vh] overflow-y-auto custom-scrollbar">
                         <div className="flex items-start justify-between mb-4">
                             <div>
                                 <h2 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1258,6 +1125,77 @@
                                 )}
                             </div>
 
+                            {/* Digital Delivery Book Section */}
+                            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-3.5 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-extrabold uppercase tracking-wide text-teal-700 dark:text-teal-400">
+                                        Digital Delivery Book
+                                    </span>
+                                    <span className="text-[10px] text-slate-400">Optional — can edit anytime</span>
+                                </div>
+
+                                <div className="grid grid-cols-12 gap-2.5">
+                                    <div className="col-span-3">
+                                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Gravida</label>
+                                        <input type="number" min="1" value={gravida} onChange={(e) => setGravida(e.target.value)} placeholder="G" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-2 text-xs font-mono font-bold" />
+                                    </div>
+                                    <div className="col-span-3">
+                                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Para</label>
+                                        <input type="number" min="0" value={para} onChange={(e) => setPara(e.target.value)} placeholder="P" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-2 text-xs font-mono font-bold" />
+                                    </div>
+                                    <div className="col-span-6">
+                                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Race</label>
+                                        <select value={race} onChange={(e) => setRace(e.target.value)} className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-teal-500">
+                                            <option value="">Select race...</option>
+                                            {RACE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-12 gap-2.5">
+                                    <div className="col-span-6">
+                                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Baby Gender</label>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                            {['Boy', 'Girl'].map(g => (
+                                                <button key={g} type="button" onClick={() => setBabyGender(babyGender === g ? '' : g)} className={`rounded-xl py-1.5 text-xs font-bold border transition ${babyGender === g ? (g === 'Boy' ? 'bg-sky-600 text-white border-sky-600' : 'bg-pink-600 text-white border-pink-600') : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}>
+                                                    {g}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="col-span-6">
+                                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Birth Weight (kg)</label>
+                                        <input type="number" step="0.01" min="0.2" max="7" value={birthWeight} onChange={(e) => setBirthWeight(e.target.value)} placeholder="e.g. 3.15" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono font-bold" />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-12 gap-2.5 items-end">
+                                    <div className="col-span-7">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-[10px] font-bold uppercase text-slate-500">Apgar (1m / 5m)</label>
+                                            <button type="button" onClick={() => { setApgar1('9'); setApgar5('10'); }} className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300 hover:bg-teal-200 transition">
+                                                Quick 9/10
+                                            </button>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <input type="number" min="0" max="10" value={apgar1} onChange={(e) => setApgar1(e.target.value)} placeholder="1m" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono font-bold text-center" />
+                                            <span className="font-mono font-bold text-slate-400">/</span>
+                                            <input type="number" min="0" max="10" value={apgar5} onChange={(e) => setApgar5(e.target.value)} placeholder="5m" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono font-bold text-center" />
+                                        </div>
+                                    </div>
+                                    <div className="col-span-5">
+                                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">DCC</label>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                            {['Yes', 'No'].map(opt => (
+                                                <button key={opt} type="button" onClick={() => setDcc(dcc === opt ? '' : opt)} className={`rounded-xl py-1.5 text-xs font-bold border transition ${dcc === opt ? (opt === 'Yes' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-700 text-white border-slate-700') : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}>
+                                                    {opt}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="flex gap-2 pt-2">
                                 <button
                                     type="button"
@@ -1285,11 +1223,19 @@
         const DirectDeliveryModal = ({ indicationOptions = LSCS_INDICATIONS, onClose, onSave }) => {
             const [name, setName] = React.useState('');
             const [ic, setIc] = React.useState('');
+            const [gravida, setGravida] = React.useState('');
+            const [para, setPara] = React.useState('');
+            const [race, setRace] = React.useState('');
             const [location, setLocation] = React.useState('OT (Elective)');
             const [deliveryTime, setDeliveryTime] = React.useState(toLocalISOString(new Date()));
             const [deliveryMode, setDeliveryMode] = React.useState('ELLSCS');
             const [lscsIndication, setLscsIndication] = React.useState('');
             const [ebl, setEbl] = React.useState('');
+            const [babyGender, setBabyGender] = React.useState('');
+            const [birthWeight, setBirthWeight] = React.useState('');
+            const [apgar1, setApgar1] = React.useState('');
+            const [apgar5, setApgar5] = React.useState('');
+            const [dcc, setDcc] = React.useState('');
 
             const isCS = isLSCSMode(deliveryMode);
             const pphPreview = classifyPPH(deliveryMode, ebl);
@@ -1300,6 +1246,9 @@
                     id: `DIR-${Date.now()}`,
                     name: name.trim(),
                     ic: ic.trim(),
+                    gravida: gravida !== '' ? Number(gravida) : '',
+                    para: para !== '' ? Number(para) : '',
+                    race,
                     location,
                     bookingTime: Date.now(),
                     bookedBy: 'LR Direct Log',
@@ -1307,13 +1256,18 @@
                     deliveryTime,
                     deliveryMode,
                     lscsIndication: isCS ? lscsIndication.trim() : '',
-                    ebl: ebl !== '' ? Number(ebl) : ''
+                    ebl: ebl !== '' ? Number(ebl) : '',
+                    babyGender,
+                    birthWeight: birthWeight !== '' ? Number(birthWeight) : '',
+                    apgar1: apgar1 !== '' ? Number(apgar1) : '',
+                    apgar5: apgar5 !== '' ? Number(apgar5) : '',
+                    dcc
                 });
             };
 
             return (
                 <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-                    <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 my-auto">
+                    <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 my-auto max-h-[92vh] overflow-y-auto custom-scrollbar">
                         <div className="flex items-start justify-between mb-4">
                             <div>
                                 <h2 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1321,7 +1275,7 @@
                                     Log Direct Delivery / LSCS
                                 </h2>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    For Elective LSCS, Direct-to-OT EMLSCS, Ward SVD &amp; BBA
+                                    Saves directly to permanent Digital Delivery Book &amp; 24h Census
                                 </p>
                             </div>
                             <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600">
@@ -1349,6 +1303,24 @@
                                         placeholder="Optional"
                                         className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-mono text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-teal-500"
                                     />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-12 gap-2.5">
+                                <div className="col-span-3">
+                                    <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">Gravida</label>
+                                    <input type="number" min="1" value={gravida} onChange={(e) => setGravida(e.target.value)} placeholder="G" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-2 text-xs font-mono font-bold" />
+                                </div>
+                                <div className="col-span-3">
+                                    <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">Para</label>
+                                    <input type="number" min="0" value={para} onChange={(e) => setPara(e.target.value)} placeholder="P" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-2 text-xs font-mono font-bold" />
+                                </div>
+                                <div className="col-span-6">
+                                    <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">Race</label>
+                                    <select value={race} onChange={(e) => setRace(e.target.value)} className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-teal-500">
+                                        <option value="">Select race...</option>
+                                        {RACE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                                    </select>
                                 </div>
                             </div>
 
@@ -1433,6 +1405,57 @@
                                 )}
                             </div>
 
+                            {/* Baby & DCC Details */}
+                            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-3.5 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-extrabold uppercase tracking-wide text-teal-700 dark:text-teal-400">
+                                        Baby &amp; Cord Details
+                                    </span>
+                                    <span className="text-[10px] text-slate-400">Optional — can edit anytime</span>
+                                </div>
+                                <div className="grid grid-cols-12 gap-2.5">
+                                    <div className="col-span-6">
+                                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Baby Gender</label>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                            {['Boy', 'Girl'].map(g => (
+                                                <button key={g} type="button" onClick={() => setBabyGender(babyGender === g ? '' : g)} className={`rounded-xl py-1.5 text-xs font-bold border transition ${babyGender === g ? (g === 'Boy' ? 'bg-sky-600 text-white border-sky-600' : 'bg-pink-600 text-white border-pink-600') : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}>
+                                                    {g}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="col-span-6">
+                                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Birth Weight (kg)</label>
+                                        <input type="number" step="0.01" min="0.2" max="7" value={birthWeight} onChange={(e) => setBirthWeight(e.target.value)} placeholder="e.g. 3.15" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono font-bold" />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-12 gap-2.5 items-end">
+                                    <div className="col-span-7">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-[10px] font-bold uppercase text-slate-500">Apgar (1m / 5m)</label>
+                                            <button type="button" onClick={() => { setApgar1('9'); setApgar5('10'); }} className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300 hover:bg-teal-200 transition">
+                                                Quick 9/10
+                                            </button>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <input type="number" min="0" max="10" value={apgar1} onChange={(e) => setApgar1(e.target.value)} placeholder="1m" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono font-bold text-center" />
+                                            <span className="font-mono font-bold text-slate-400">/</span>
+                                            <input type="number" min="0" max="10" value={apgar5} onChange={(e) => setApgar5(e.target.value)} placeholder="5m" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono font-bold text-center" />
+                                        </div>
+                                    </div>
+                                    <div className="col-span-5">
+                                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">DCC</label>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                            {['Yes', 'No'].map(opt => (
+                                                <button key={opt} type="button" onClick={() => setDcc(dcc === opt ? '' : opt)} className={`rounded-xl py-1.5 text-xs font-bold border transition ${dcc === opt ? (opt === 'Yes' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-700 text-white border-slate-700') : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}>
+                                                    {opt}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="flex gap-2 pt-2">
                                 <button
                                     type="button"
@@ -1445,7 +1468,7 @@
                                     type="submit"
                                     className="flex-1 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold py-2.5 text-xs shadow-sm transition"
                                 >
-                                    Save to 24h Census
+                                    Save to Delivery Book
                                 </button>
                             </div>
                         </form>
@@ -2049,13 +2072,14 @@
                                         <th className="py-2.5 px-4">Mode</th>
                                         <th className="py-2.5 px-4">LSCS Indication</th>
                                         <th className="py-2.5 px-4">EBL (mL)</th>
+                                        <th className="py-2.5 px-4">Baby / DCC</th>
                                         {canManageLR && <th className="py-2.5 px-4 text-right">Action</th>}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                                     {filtered.length === 0 ? (
                                         <tr>
-                                            <td colSpan={canManageLR ? 7 : 6} className="py-10 text-center text-slate-400">
+                                            <td colSpan={canManageLR ? 8 : 7} className="py-10 text-center text-slate-400">
                                                 No deliveries recorded in this 8am–8am window yet.
                                             </td>
                                         </tr>
@@ -2068,6 +2092,9 @@
                                                 : pph.level === 'PPH'
                                                     ? 'bg-amber-50/80 dark:bg-amber-950/25'
                                                     : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40';
+                                            const apgarDisp = (item.apgar1 !== undefined && item.apgar1 !== '' && item.apgar5 !== undefined && item.apgar5 !== '')
+                                                ? `${item.apgar1}/${item.apgar5}`
+                                                : (item.apgar || '');
                                             return (
                                                 <tr key={item.id} className={`${rowBg} transition`}>
                                                     <td className="py-3 px-4 font-mono font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">
@@ -2075,10 +2102,16 @@
                                                     </td>
                                                     <td className="py-3 px-4">
                                                         <div className="font-bold text-slate-900 dark:text-white">{item.name}</div>
-                                                        {item.ic && <div className="text-[10px] font-mono text-slate-400">{item.ic}</div>}
+                                                        <div className="text-[10px] font-mono text-slate-400">
+                                                            {[
+                                                                item.ic,
+                                                                (item.gravida !== undefined && item.gravida !== '') ? `G${item.gravida}P${item.para ?? 0}` : '',
+                                                                item.race
+                                                            ].filter(Boolean).join(' • ')}
+                                                        </div>
                                                     </td>
                                                     <td className="py-3 px-4 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                                                        {item.assignedBed || item.location || 'LR'}
+                                                        {item.assignedBed || item.source || item.location || 'LR'}
                                                     </td>
                                                     <td className="py-3 px-4 whitespace-nowrap">
                                                         <span className={`px-2 py-0.5 rounded-lg font-mono text-[11px] font-bold ${isLSCSMode(mode) ? 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200' : 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200'}`}>
@@ -2099,6 +2132,30 @@
                                                                 </span>
                                                             )}
                                                         </div>
+                                                    </td>
+                                                    <td className="py-3 px-4 whitespace-nowrap text-[11px] text-slate-600 dark:text-slate-300">
+                                                        {item.babyGender || item.birthWeight || apgarDisp || item.dcc ? (
+                                                            <div className="flex flex-wrap items-center gap-1">
+                                                                {item.babyGender && (
+                                                                    <span className={`px-1.5 py-0.5 rounded font-bold text-[10px] ${item.babyGender === 'Boy' ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300' : 'bg-pink-100 text-pink-700 dark:bg-pink-900/50 dark:text-pink-300'}`}>
+                                                                        {item.babyGender}
+                                                                    </span>
+                                                                )}
+                                                                {item.birthWeight !== undefined && item.birthWeight !== '' && (
+                                                                    <span className="font-mono font-semibold">{item.birthWeight}kg</span>
+                                                                )}
+                                                                {apgarDisp && (
+                                                                    <span className="font-mono text-slate-500">Apgar {apgarDisp}</span>
+                                                                )}
+                                                                {item.dcc && (
+                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${item.dcc === 'Yes' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300' : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
+                                                                        DCC:{item.dcc}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-slate-400">—</span>
+                                                        )}
                                                     </td>
                                                     {canManageLR && (
                                                         <td className="py-3 px-4 text-right whitespace-nowrap">
