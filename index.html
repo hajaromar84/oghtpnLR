@@ -615,7 +615,9 @@
                 : `${patient.membrane === 'PROM_MI' ? 'PROM' : patient.membrane} • ${patient.liquor || 'Clear'}`;
             const isAbnLiq = patient.membrane !== 'Intact' && !['Clear', 'N/A'].includes(patient.liquor);
             const issuesArr = Array.isArray(patient.issues) ? patient.issues : [];
-            const canWardEdit = !canManageLR || userRole === 'Admin';
+            const isOwnWard = patient.location === userRole;
+            const canWardEdit = isOwnWard || userRole === 'Admin';
+            const canConfirmTransfer = isOwnWard || userRole === 'Admin';
 
             const cardToneClass = isHigh
                 ? 'bg-rose-50/95 dark:bg-rose-950/45 border-rose-400 dark:border-rose-700'
@@ -704,7 +706,7 @@
                                     </span>
                                     <span className="font-mono">@ {formatDateTimeDisp(patient.callTime)}</span>
                                 </div>
-                                {!canManageLR ? (
+                                {canConfirmTransfer ? (
                                     <div className="flex gap-1.5">
                                         <input
                                             value={wardAckName}
@@ -720,36 +722,40 @@
                                         </button>
                                     </div>
                                 ) : (
-                                    <p className="text-[10px] font-semibold text-sky-700 dark:text-sky-300">Awaiting ward transfer confirmation...</p>
+                                    <p className="text-[10px] font-semibold text-sky-700 dark:text-sky-300">
+                                        Awaiting {patient.location} transfer confirmation...
+                                    </p>
                                 )}
                             </div>
                         ) : (
                             <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-                                <div className="flex items-center gap-1.5">
-                                    {canManageLR && (
-                                        <>
-                                            <button onClick={onCall} className="flex-1 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold py-1.5 transition shadow-sm">
-                                                Call to Bed
-                                            </button>
-                                            <button onClick={onBumpUp} className="p-1.5 rounded-xl bg-slate-100 hover:bg-amber-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300" title="Nudge Priority UP">
-                                                <i className="ph-bold ph-arrow-up"></i>
-                                            </button>
-                                            <button onClick={onBumpDown} className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300" title="Nudge Priority DOWN">
-                                                <i className="ph-bold ph-arrow-down"></i>
-                                            </button>
-                                        </>
-                                    )}
-                                    {canWardEdit && (
-                                        <>
-                                            <button onClick={onUpdate} className="flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold py-1.5 transition">
-                                                Update VE
-                                            </button>
-                                            <button onClick={onCancel} className="rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300 text-xs font-bold px-3 py-1.5 transition">
-                                                Cancel
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
+                                {(canManageLR || canWardEdit) && (
+                                    <div className="flex items-center gap-1.5">
+                                        {canManageLR && (
+                                            <>
+                                                <button onClick={onCall} className="flex-1 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold py-1.5 transition shadow-sm">
+                                                    Call to Bed
+                                                </button>
+                                                <button onClick={onBumpUp} className="p-1.5 rounded-xl bg-slate-100 hover:bg-amber-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300" title="Nudge Priority UP">
+                                                    <i className="ph-bold ph-arrow-up"></i>
+                                                </button>
+                                                <button onClick={onBumpDown} className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300" title="Nudge Priority DOWN">
+                                                    <i className="ph-bold ph-arrow-down"></i>
+                                                </button>
+                                            </>
+                                        )}
+                                        {canWardEdit && (
+                                            <>
+                                                <button onClick={onUpdate} className="flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold py-1.5 transition">
+                                                    Update VE
+                                                </button>
+                                                <button onClick={onCancel} className="rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300 text-xs font-bold px-3 py-1.5 transition">
+                                                    Cancel
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
 
                                 {patient.notedBy ? (
                                     <div className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
