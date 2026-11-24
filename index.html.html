@@ -1,0 +1,2415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LR Smart Board • O&G Hospital Tengku Permaisuri Norashikin</title>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: rgba(148, 163, 184, 0.45); border-radius: 9999px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: rgba(100, 116, 139, 0.7); }
+
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
+            70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .alert-ring {
+            animation: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes slide-in-right {
+            from { transform: translateX(100%); opacity: 0.6; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .drawer-enter {
+            animation: slide-in-right 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes fade-in-up {
+            from { transform: translateY(8px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .card-enter {
+            animation: fade-in-up 0.2s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // =========================================================================
+        // CONFIGURATION & LIVE DATABASE URL
+        // =========================================================================
+        const API_URL = 'https://script.google.com/macros/s/AKfycbxhOdEe2s7TjLzAazo7zABxicoouEYHWyeGrCNiOfjyLf-ZF_fBCtr0sufNNQyOZPkj/exec';
+
+        // Exact Ward & Modal Bed Mapping
+        const LR_BEDS_LEFT = [
+            'Room 3',
+            'Room 4',
+            'Room 5',
+            'OT',
+            'Room 1A (Overflow)',
+            'Room 14A (Overflow)'
+        ];
+        const LR_BEDS_RIGHT = [
+            'Room 6',
+            'Room 13 (Urg)',
+            'Room 2 (Urg)',
+            'Room 7 (ISO)',
+            'Room 1B (Overflow)',
+            'Room 14B (Overflow)'
+        ];
+
+        // Visual Command Center Zones
+        const ZONE_ACTIVE_BEDS = ['Room 3', 'Room 4', 'Room 5', 'Room 6', 'Room 13 (Urg)', 'Room 2 (Urg)'];
+        const ZONE_SPECIALTY_BEDS = ['OT', 'Room 7 (ISO)'];
+        const ZONE_OVERFLOW_BEDS = ['Room 1A (Overflow)', 'Room 1B (Overflow)', 'Room 14A (Overflow)', 'Room 14B (Overflow)'];
+
+        // Sample Data Generator for Instant Preview / Demo Mode
+        const getSamplePatients = () => {
+            const now = Date.now();
+            const minsAgo = (m) => toLocalISOString(new Date(now - m * 60000));
+            const minsFromNow = (m) => toLocalISOString(new Date(now + m * 60000));
+            return [
+                {
+                    id: 'demo-1', name: 'Nurul Huda binti Razak', ic: '940812-10-5122', location: '7A',
+                    bookingTime: minsAgo(95), bookedBy: 'SN Aisyah', notedBy: 'Dr. Amir', notedTime: minsAgo(88),
+                    gravida: 2, para: 1, poa: '39+4', issues: ['1 Prev Scar'], admissionType: 'Spontaneous',
+                    gbs: true, epidural: false,
+                    lastVE: { time: minsAgo(25), dilation: '9', cervix: 'Fully effaced', nextReviewTime: minsFromNow(35) },
+                    membrane: 'SROM', liquor: 'TMSL', romTime: minsAgo(40), ctg: 'Suspicious',
+                    status: 'WAITING', assignedBed: null, manualOverride: 0
+                },
+                {
+                    id: 'demo-2', name: 'Siti Maisarah binti Kassim', ic: '970304-08-6014', location: 'PAC',
+                    bookingTime: minsAgo(55), bookedBy: 'Dr. Farah', notedBy: null, notedTime: null,
+                    gravida: 1, para: 0, poa: '40+2', issues: ['PIH (On Tx)'], admissionType: 'IOL - Postdates (Prostin x1)',
+                    gbs: false, epidural: true,
+                    lastVE: { time: minsAgo(30), dilation: '5', cervix: '1cm soft', nextReviewTime: minsFromNow(210), alertRole: 'LR', alertMsg: 'NEW BOOKING' },
+                    membrane: 'Intact', liquor: 'N/A', romTime: null, ctg: 'Normal',
+                    status: 'WAITING', assignedBed: null, manualOverride: 0
+                },
+                {
+                    id: 'demo-3', name: 'Kavitha a/p Subramaniam', ic: '921120-14-5890', location: '7B',
+                    bookingTime: minsAgo(140), bookedBy: 'SN Mei Ling', notedBy: 'Dr. Amir', notedTime: minsAgo(130),
+                    gravida: 3, para: 2, poa: '38+6', issues: [], admissionType: 'Spontaneous',
+                    gbs: false, epidural: false,
+                    lastVE: { time: minsAgo(15), dilation: '7', cervix: 'Effaced', nextReviewTime: minsFromNow(105) },
+                    membrane: 'SROM', liquor: 'Clear', romTime: minsAgo(60), ctg: 'Normal',
+                    status: 'CALLED', calledToBed: 'Room 13 (Urg)', callTime: minsAgo(8), manualOverride: 0
+                },
+                {
+                    id: 'demo-4', name: 'Aina Sofea binti Zulkifli', ic: '960518-10-5318', location: '7A',
+                    bookingTime: minsAgo(320), bookedBy: 'SN Aisyah', notedBy: 'Dr. Hajar', notedTime: minsAgo(310),
+                    gravida: 1, para: 0, poa: '39+1', issues: ['Obesity BMI 36.2'], admissionType: 'IOL - GDM (Foley)',
+                    gbs: true, epidural: true,
+                    lastVE: { time: minsAgo(255), dilation: '6', cervix: 'Effaced', nextReviewTime: minsAgo(15), reviewAcked: false },
+                    membrane: 'ARM', liquor: 'Clear', romTime: minsAgo(255), ctg: 'Normal',
+                    status: 'IN_LR', assignedBed: 'Room 3', admissionTime: minsAgo(270), manualOverride: 0
+                },
+                {
+                    id: 'demo-5', name: 'Wong Mei Yan', ic: '910903-14-6210', location: 'PAC',
+                    bookingTime: minsAgo(210), bookedBy: 'Dr. Lim', notedBy: 'Dr. Hajar', notedTime: minsAgo(205),
+                    gravida: 2, para: 1, poa: '38+4', issues: ['LGA'], admissionType: 'Spontaneous',
+                    gbs: false, epidural: false,
+                    lastVE: { time: minsAgo(90), dilation: '8', cervix: 'Thin', nextReviewTime: minsFromNow(30) },
+                    membrane: 'SROM', liquor: 'MMSL', romTime: minsAgo(110), ctg: 'Normal',
+                    status: 'IN_LR', assignedBed: 'Room 4', admissionTime: minsAgo(160), manualOverride: 0
+                },
+                {
+                    id: 'demo-6', name: 'Farhana binti Osman', ic: '930219-06-5104', location: '7B',
+                    bookingTime: minsAgo(400), bookedBy: 'SN Nadia', notedBy: 'Dr. Amir', notedTime: minsAgo(390),
+                    gravida: 4, para: 3, poa: '39+0', issues: ['PE (On Tx)'], admissionType: 'IOL - PE (Prostin x1)',
+                    gbs: false, epidural: false,
+                    lastVE: { time: minsAgo(180), dilation: '10', cervix: 'Fully', nextReviewTime: null },
+                    membrane: 'ARM', liquor: 'Clear', romTime: minsAgo(200), ctg: 'Normal',
+                    status: 'DELIVERED', assignedBed: 'Room 1A (Overflow)', admissionTime: minsAgo(350), deliveryTime: minsAgo(45), manualOverride: 0
+                },
+                {
+                    id: 'demo-7', name: 'Priya a/p Ramesh', ic: '980711-10-5842', location: 'PAC',
+                    bookingTime: minsAgo(310), bookedBy: 'Dr. Farah', notedBy: 'Dr. Hajar', notedTime: minsAgo(300),
+                    gravida: 1, para: 0, poa: '40+0', issues: [], admissionType: 'Spontaneous',
+                    gbs: false, epidural: true,
+                    lastVE: { time: minsAgo(120), dilation: '10', cervix: 'Fully', nextReviewTime: null },
+                    membrane: 'SROM', liquor: 'Clear', romTime: minsAgo(150), ctg: 'Normal',
+                    status: 'DELIVERED', assignedBed: 'Room 1B (Overflow)', admissionTime: minsAgo(260), deliveryTime: minsAgo(20), manualOverride: 0
+                }
+            ];
+        };
+
+        // =========================================================================
+        // AUDIO ENGINE (With Mute Control)
+        // =========================================================================
+        let audioCtx = null;
+        const getAudioCtx = () => {
+            if (!audioCtx) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) audioCtx = new AudioContextClass();
+            }
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            return audioCtx;
+        };
+
+        const playAlertSound = (type, isMuted = false) => {
+            if (isMuted) return;
+            try {
+                const ctx = getAudioCtx();
+                if (!ctx) return;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                if (type === 'critical') {
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(800, ctx.currentTime);
+                    osc.frequency.setValueAtTime(1200, ctx.currentTime + 0.12);
+                    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.35);
+                } else if (type === 'new_booking') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+                    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.18);
+                    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.55);
+                } else if (type === 'called') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+                    osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.18);
+                    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.5);
+                } else {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(680, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.05, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.18);
+                }
+            } catch (e) {
+                console.warn('Audio playback skipped:', e);
+            }
+        };
+
+        // =========================================================================
+        // DATE, TIME & CLINICAL HELPER FUNCTIONS (Local Timezone Safe)
+        // =========================================================================
+        const toLocalISOString = (dateObj) => {
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}T${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}:00`;
+        };
+
+        const parseSafeDate = (val) => {
+            if (!val) return null;
+            if (typeof val === 'number' || (typeof val === 'string' && !isNaN(val) && val.trim() !== '')) {
+                const d = new Date(Number(val));
+                return isNaN(d.getTime()) ? null : d;
+            }
+            const d = new Date(val);
+            return isNaN(d.getTime()) ? null : d;
+        };
+
+        const formatDateTimeDisp = (dateTimeStr) => {
+            if (!dateTimeStr) return '';
+            const d = parseSafeDate(dateTimeStr);
+            if (!d) return String(dateTimeStr);
+            const today = new Date();
+            const hrs = String(d.getHours()).padStart(2, '0');
+            const mins = String(d.getMinutes()).padStart(2, '0');
+            if (d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear()) {
+                return `${hrs}:${mins}`;
+            }
+            return `${d.getDate()}/${d.getMonth() + 1} ${hrs}:${mins}`;
+        };
+
+        const formatDuration = (startTime, currentTime) => {
+            const d = parseSafeDate(startTime);
+            if (!d) return '0m';
+            const diffMins = Math.max(0, Math.floor((currentTime - d.getTime()) / 60000));
+            const days = Math.floor(diffMins / 1440);
+            const hrs = Math.floor((diffMins % 1440) / 60);
+            const mins = diffMins % 60;
+            if (days > 0) return `${days}d ${hrs}h`;
+            if (hrs > 0) return `${hrs}h ${mins}m`;
+            return `${mins}m`;
+        };
+
+        const formatMembraneLiquor = (patient) => {
+            if (patient.membrane === 'Intact') return 'MI (Intact)';
+            let l = patient.liquor || 'N/A';
+            if (l === 'Clear') l = 'Clear';
+            else if (l === 'Blood stained') l = 'Blood';
+            const timeStr = patient.romTime ? ` @ ${formatDateTimeDisp(patient.romTime)}` : '';
+            if (patient.membrane === 'PROM_MI') return `PROM${timeStr} • ${l}`;
+            return `${patient.membrane}${timeStr} • ${l}`;
+        };
+
+        // Clinical Priority Triage Algorithm (Exact Department Weights)
+        const calculatePriority = (patient) => {
+            let score = 0;
+            if (patient.admissionType && patient.admissionType.includes('IOL')) score += 10;
+            if (patient.ctg === 'Pathological') score += 100;
+            if (patient.ctg === 'Suspicious') score += 50;
+
+            if (patient.liquor === 'TMSL' || patient.liquor === 'Blood stained') score += 40;
+            else if (patient.liquor === 'MMSL') score += 30;
+            else if (patient.liquor === 'LMSL') score += 15;
+
+            const hasRom = ['SROM', 'ARM'].includes(patient.membrane) || patient.membrane === 'PROM_MI';
+            if (hasRom) {
+                score += 15;
+                if (patient.gbs) score += 15;
+            }
+
+            if (patient.lastVE) {
+                const dil = Number(patient.lastVE.dilation);
+                if (dil >= 9) score += 40;
+                else if (dil >= 7) score += 20;
+            }
+
+            if (
+                patient.issues &&
+                patient.issues.some(i => typeof i === 'string' && i.includes('1 Prev Scar')) &&
+                patient.lastVE &&
+                Number(patient.lastVE.dilation) > 4
+            ) {
+                score += 15;
+            }
+
+            return score + (Number(patient.manualOverride) || 0);
+        };
+
+        // Partogram Progress Bar Helper
+        const getReviewProgress = (lastVE, currentTime) => {
+            if (!lastVE?.nextReviewTime) return null;
+            const nextDate = parseSafeDate(lastVE.nextReviewTime);
+            if (!nextDate) return null;
+            const startDate = parseSafeDate(lastVE.time) || new Date(nextDate.getTime() - 4 * 3600000);
+            const totalMs = Math.max(1, nextDate.getTime() - startDate.getTime());
+            const remainingMs = nextDate.getTime() - currentTime;
+            const pctRemaining = Math.max(0, Math.min(100, (remainingMs / totalMs) * 100));
+            const minsLeft = Math.ceil(remainingMs / 60000);
+            const isOverdue = remainingMs <= 0;
+            const isSoon = !isOverdue && minsLeft <= 30;
+            return { pctRemaining, minsLeft, isOverdue, isSoon, nextTimeStr: formatDateTimeDisp(lastVE.nextReviewTime) };
+        };
+
+        // =========================================================================
+        // CUSTOM 5-MINUTE ROUNDED DATE/TIME PICKER (Local Timezone Locked)
+        // =========================================================================
+        const CustomDateTimePicker = ({ name, defaultValue, disabled }) => {
+            const [date, setDate] = React.useState('');
+            const [hour, setHour] = React.useState('00');
+            const [minute, setMinute] = React.useState('00');
+
+            React.useEffect(() => {
+                const d = parseSafeDate(defaultValue) || new Date();
+                const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                setDate(localDate);
+                setHour(String(d.getHours()).padStart(2, '0'));
+                const roundedMins = Math.round(d.getMinutes() / 5) * 5;
+                setMinute(String(roundedMins === 60 ? 0 : roundedMins).padStart(2, '0'));
+            }, [defaultValue]);
+
+            const minutesList = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
+            const hoursList = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+            const valueString = (date && hour && minute) ? `${date}T${hour}:${minute}:00` : '';
+
+            return (
+                <div className={`flex items-center gap-1.5 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+                    <input type="hidden" name={name} value={valueString} />
+                    <input
+                        type="date"
+                        value={date}
+                        onChange={e => setDate(e.target.value)}
+                        disabled={disabled}
+                        required={!disabled}
+                        className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-2 text-xs font-medium text-slate-800 dark:text-slate-100 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 outline-none"
+                    />
+                    <div className="flex items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-1">
+                        <select
+                            value={hour}
+                            onChange={e => setHour(e.target.value)}
+                            disabled={disabled}
+                            required={!disabled}
+                            className="bg-transparent py-2 pl-1 pr-0.5 text-xs font-mono font-semibold text-slate-800 dark:text-slate-100 outline-none"
+                        >
+                            {hoursList.map(h => <option key={h} value={h} className="dark:bg-slate-800">{h}</option>)}
+                        </select>
+                        <span className="font-mono font-bold text-slate-400">:</span>
+                        <select
+                            value={minute}
+                            onChange={e => setMinute(e.target.value)}
+                            disabled={disabled}
+                            required={!disabled}
+                            className="bg-transparent py-2 pl-0.5 pr-1 text-xs font-mono font-semibold text-slate-800 dark:text-slate-100 outline-none"
+                        >
+                            {minutesList.map(m => <option key={m} value={m} className="dark:bg-slate-800">{m}</option>)}
+                        </select>
+                    </div>
+                </div>
+            );
+        };
+
+        // =========================================================================
+        // HERO DILATION BADGE (1-Second Clinical Scanning)
+        // =========================================================================
+        const DilationBadge = ({ dilation, compact = false }) => {
+            if (dilation === undefined || dilation === null || dilation === '') return null;
+            const cm = Number(dilation);
+            let style = 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700';
+            if (cm >= 9) style = 'bg-rose-600 text-white border-rose-700 shadow-sm shadow-rose-500/20';
+            else if (cm >= 7) style = 'bg-amber-500 text-white border-amber-600 shadow-sm shadow-amber-500/20';
+            else if (cm >= 4) style = 'bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-800';
+
+            return (
+                <div className={`inline-flex items-baseline gap-0.5 font-mono font-bold rounded-lg border shrink-0 ${style} ${compact ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-sm'}`}>
+                    <span>{dilation}</span>
+                    <span className="text-[10px] font-semibold opacity-80">cm</span>
+                </div>
+            );
+        };
+
+        // =========================================================================
+        // BED SLOT CARD (Active, Specialty, and Overflow Variants)
+        // =========================================================================
+        const BedSlot = ({
+            bedName, patient, incoming, isLR, isTVMode, isOverflowZone, isSpecialtyZone,
+            currentTime, onUpdate, onDeliver, onSendToOT, onClear, onArrived, onAcknowledge, onMoveBed
+        }) => {
+            const [ackName, setAckName] = React.useState('');
+            const isVacant = !patient;
+            const isUrgentBed = bedName.includes('(Urg)');
+            const isISOBed = bedName.includes('(ISO)');
+            const isOTBed = bedName === 'OT';
+
+            // 1. INCOMING / EN-ROUTE STATE
+            if (incoming && isVacant) {
+                const isEnRoute = incoming.status === 'EN_ROUTE';
+                return (
+                    <div className={`card-enter rounded-xl border-2 border-dashed p-3.5 flex flex-col justify-between transition-all relative overflow-hidden ${isOverflowZone ? 'min-h-[110px]' : 'min-h-[175px]'} ${
+                        isEnRoute
+                            ? 'bg-teal-50/70 dark:bg-teal-950/30 border-teal-400 dark:border-teal-600'
+                            : 'bg-sky-50/70 dark:bg-sky-950/30 border-sky-400 dark:border-sky-600'
+                    }`}>
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{bedName}</span>
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                isEnRoute ? 'bg-teal-100 text-teal-800 dark:bg-teal-900/60 dark:text-teal-300' : 'bg-sky-100 text-sky-800 dark:bg-sky-900/60 dark:text-sky-300'
+                            }`}>
+                                <i className={`ph-fill ${isEnRoute ? 'ph-person-simple-walk animate-bounce' : 'ph-spinner-gap animate-spin'}`}></i>
+                                {isEnRoute ? 'En Route' : 'Called'}
+                            </span>
+                        </div>
+                        <div className="my-2 text-center">
+                            <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">{incoming.name}</p>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+                                {isEnRoute
+                                    ? `Sent by ${incoming.wardNotedBy}`
+                                    : `Called ${formatDuration(incoming.callTime, currentTime)} ago • ${incoming.location}`}
+                            </p>
+                        </div>
+                        {isEnRoute && isLR && !isTVMode ? (
+                            <button
+                                onClick={() => onArrived(incoming.id)}
+                                className="w-full bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold py-2 rounded-lg shadow-sm transition flex items-center justify-center gap-1.5"
+                            >
+                                <i className="ph-bold ph-check-circle"></i> Confirm Arrival
+                            </button>
+                        ) : (
+                            <div className="text-center text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                {isEnRoute ? 'Awaiting arrival in LR' : 'Awaiting ward transfer'}
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            // 2. VACANT BED STATE
+            if (isVacant) {
+                return (
+                    <div className={`rounded-xl border border-dashed transition-all flex flex-col items-center justify-center text-center p-3 ${
+                        isOverflowZone ? 'min-h-[96px]' : isSpecialtyZone ? 'min-h-[125px]' : 'min-h-[175px]'
+                    } ${
+                        isUrgentBed
+                            ? 'bg-amber-50/40 dark:bg-amber-950/10 border-amber-300/80 dark:border-amber-800/50 text-amber-700/70 dark:text-amber-500/70'
+                            : isISOBed
+                                ? 'bg-violet-50/40 dark:bg-violet-950/10 border-violet-300/70 dark:border-violet-800/50 text-violet-600/70 dark:text-violet-400/70'
+                                : 'bg-white/60 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600'
+                    }`}>
+                        <div className="flex items-center gap-1.5 mb-1">
+                            <i className={`ph ${isOTBed ? 'ph-first-aid-kit' : isISOBed ? 'ph-shield-warning' : 'ph-bed'} text-xl`}></i>
+                            <span className="font-bold text-xs tracking-tight">{bedName}</span>
+                        </div>
+                        <span className="text-[11px] font-medium opacity-75">Available</span>
+                    </div>
+                );
+            }
+
+            // 3. OCCUPIED BED STATE
+            const isDelivered = patient.status === 'DELIVERED';
+            const reviewProg = !isDelivered ? getReviewProgress(patient.lastVE, currentTime) : null;
+            const isReviewOverdue = Boolean(reviewProg?.isOverdue);
+            const needsNormalAck = patient.lastVE?.alertRole === 'LR';
+            const needsReviewAck = isReviewOverdue && !patient.lastVE?.reviewAcked && isLR;
+            const hasActiveAlert = !isDelivered && (needsNormalAck || needsReviewAck);
+            const isAbnormalLiq = patient.membrane !== 'Intact' && !['Clear', 'N/A'].includes(patient.liquor);
+            const isAbnormalCTG = patient.ctg !== 'Normal';
+
+            // Sleek Compact Holding Card for Delivered Patients
+            if (isDelivered) {
+                return (
+                    <div className={`card-enter rounded-xl border bg-emerald-50/70 dark:bg-emerald-950/25 border-emerald-200 dark:border-emerald-800/70 shadow-sm flex flex-col justify-between overflow-hidden ${
+                        isOverflowZone ? 'p-3 min-h-[115px]' : 'p-3.5 min-h-[175px]'
+                    }`}>
+                        <div>
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-600 text-white">
+                                    <i className="ph-fill ph-check-circle"></i> {bedName}
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded-md">
+                                    <i className="ph-fill ph-baby"></i> {formatDateTimeDisp(patient.deliveryTime)}
+                                </span>
+                            </div>
+                            <h3 className={`font-bold text-slate-900 dark:text-white leading-snug truncate ${isTVMode ? 'text-base' : 'text-sm'}`}>
+                                {patient.name}
+                            </h3>
+                            <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+                                {patient.ic} • {patient.location}
+                            </p>
+                            {patient.issues && patient.issues.length > 0 && (
+                                <p className="text-[11px] font-medium text-emerald-800 dark:text-emerald-300 mt-1.5 line-clamp-1">
+                                    {patient.issues.join(' • ')}
+                                </p>
+                            )}
+                        </div>
+
+                        {!isTVMode && (
+                            <div className="pt-2.5 mt-2 border-t border-emerald-200/80 dark:border-emerald-800/60">
+                                {isLR ? (
+                                    <div className="flex gap-1.5">
+                                        <button
+                                            onClick={onMoveBed}
+                                            className="flex-1 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold py-1.5 px-2 rounded-lg transition flex items-center justify-center gap-1"
+                                        >
+                                            <i className="ph-bold ph-arrows-left-right"></i> Move
+                                        </button>
+                                        <button
+                                            onClick={onClear}
+                                            className="flex-[1.6] bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-semibold py-1.5 px-2 rounded-lg shadow-sm transition flex items-center justify-center gap-1"
+                                        >
+                                            <i className="ph-bold ph-sign-out"></i> Transfer to ward
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="text-center text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                                        Delivered • Awaiting Ward Transfer
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            // Active Labour Bed Card
+            return (
+                <div className={`card-enter rounded-xl border bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between overflow-hidden transition-all relative ${
+                    hasActiveAlert
+                        ? 'border-rose-500 dark:border-rose-500 alert-ring'
+                        : isAbnormalCTG
+                            ? 'border-amber-400 dark:border-amber-500/80'
+                            : 'border-slate-200 dark:border-slate-800'
+                }`}>
+                    {/* Persistent Action Alert Banner */}
+                    {hasActiveAlert && (
+                        <div className="bg-rose-600 text-white px-3 py-2">
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide mb-1.5">
+                                <i className="ph-fill ph-warning-circle text-base shrink-0 animate-pulse"></i>
+                                <span className="truncate">{needsNormalAck ? patient.lastVE?.alertMsg : 'Partogram Review Overdue'}</span>
+                            </div>
+                            {!isTVMode && isLR && (
+                                <div className="flex gap-1.5">
+                                    <input
+                                        type="text"
+                                        value={ackName}
+                                        onChange={e => setAckName(e.target.value)}
+                                        placeholder="MO/SN Name"
+                                        className="flex-1 min-w-0 text-xs px-2 py-1 rounded-md bg-white/95 text-slate-900 placeholder-slate-400 outline-none"
+                                    />
+                                    <button
+                                        onClick={() => { if (ackName.trim()) { onAcknowledge(patient.id, ackName.trim(), needsNormalAck ? 'NORMAL' : 'REVIEW'); setAckName(''); } }}
+                                        className="bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold px-2.5 py-1 rounded-md transition shrink-0"
+                                    >
+                                        ACK
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="p-3.5 flex-1 flex flex-col">
+                        {/* Top Row: Bed Pill + Stay Timer + Hero Dilation */}
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                                    isOTBed
+                                        ? 'bg-rose-600 text-white'
+                                        : isUrgentBed
+                                            ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-300'
+                                            : isISOBed
+                                                ? 'bg-violet-100 text-violet-900 dark:bg-violet-900/50 dark:text-violet-300'
+                                                : 'bg-teal-600 text-white'
+                                }`}>
+                                    {bedName}
+                                </span>
+                                {patient.admissionTime && (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md">
+                                        <i className="ph ph-clock"></i> {formatDuration(patient.admissionTime, currentTime)}
+                                    </span>
+                                )}
+                            </div>
+                            <DilationBadge dilation={patient.lastVE?.dilation} />
+                        </div>
+
+                        {/* Patient Identity */}
+                        <h3 className={`font-bold text-slate-900 dark:text-white leading-tight truncate ${isTVMode ? 'text-base' : 'text-sm'}`}>
+                            {patient.name}
+                        </h3>
+                        <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                            G{patient.gravida}P{patient.para} • {patient.poa} • <span className="text-teal-700 dark:text-teal-400 font-sans font-semibold">{patient.admissionType}</span>
+                        </p>
+
+                        {/* Clinical Tags */}
+                        {(patient.gbs || patient.epidural || (patient.issues && patient.issues.length > 0)) && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                                {patient.gbs && (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800">
+                                        GBS +ve
+                                    </span>
+                                )}
+                                {patient.epidural && (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800">
+                                        Epidural
+                                    </span>
+                                )}
+                                {patient.issues && patient.issues.map((issue, idx) => (
+                                    <span key={idx} className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">
+                                        {issue}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Scannable Clinical Snapshot */}
+                        <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1 text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-slate-500 dark:text-slate-400 truncate">
+                                    Cx {patient.lastVE?.cervix || '-'} <span className="font-mono text-[10px]">({formatDateTimeDisp(patient.lastVE?.time)})</span>
+                                </span>
+                                <span className={`font-bold shrink-0 px-1.5 py-0.5 rounded text-[11px] ${
+                                    patient.ctg === 'Pathological'
+                                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                                        : patient.ctg === 'Suspicious'
+                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                            : 'text-emerald-700 dark:text-emerald-400'
+                                }`}>
+                                    CTG: {patient.ctg}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2 text-[11px]">
+                                <span className={isAbnormalLiq ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-600 dark:text-slate-300 font-medium'}>
+                                    {formatMembraneLiquor(patient)}
+                                </span>
+                                {reviewProg && (
+                                    <span className={`font-mono font-bold shrink-0 ${
+                                        reviewProg.isOverdue
+                                            ? 'text-rose-600 dark:text-rose-400 animate-pulse'
+                                            : reviewProg.isSoon
+                                                ? 'text-amber-600 dark:text-amber-400'
+                                                : 'text-slate-500 dark:text-slate-400'
+                                    }`}>
+                                        Rev {reviewProg.nextTimeStr}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Clean Ghost Action Footer */}
+                        {!isTVMode && (
+                            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1">
+                                {isLR ? (
+                                    <>
+                                        <button
+                                            onClick={onUpdate}
+                                            className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition flex items-center justify-center gap-1 ${
+                                                isReviewOverdue
+                                                    ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                                                    : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                                            }`}
+                                            title="Update VE / Status"
+                                        >
+                                            <i className="ph-bold ph-pencil-simple"></i> VE
+                                        </button>
+                                        <button
+                                            onClick={onMoveBed}
+                                            className="py-1.5 px-2 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center justify-center gap-1"
+                                            title="Move Bed"
+                                        >
+                                            <i className="ph-bold ph-arrows-left-right"></i> Move
+                                        </button>
+                                        {!isOTBed && (
+                                            <button
+                                                onClick={onSendToOT}
+                                                className="py-1.5 px-2 rounded-lg text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition flex items-center justify-center gap-1"
+                                                title="Send to OT"
+                                            >
+                                                <i className="ph-bold ph-warning"></i> OT
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={onDeliver}
+                                            className="flex-1 py-1.5 px-2 rounded-lg text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition flex items-center justify-center gap-1"
+                                        >
+                                            <i className="ph-bold ph-baby"></i> Deliver
+                                        </button>
+                                    </>
+                                ) : (
+                                    <div className="w-full text-center text-[11px] font-medium text-slate-400 dark:text-slate-500 py-0.5">
+                                        Active in Labour Room
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Visual Partogram Progress Bar (Bottom Edge) */}
+                    {reviewProg && (
+                        <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 overflow-hidden" title={`Next Review: ${reviewProg.nextTimeStr}`}>
+                            <div
+                                className={`h-full transition-all duration-500 ${
+                                    reviewProg.isOverdue
+                                        ? 'bg-rose-500 w-full animate-pulse'
+                                        : reviewProg.isSoon
+                                            ? 'bg-amber-500'
+                                            : 'bg-teal-500'
+                                }`}
+                                style={{ width: reviewProg.isOverdue ? '100%' : `${Math.max(6, reviewProg.pctRemaining)}%` }}
+                            />
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // =========================================================================
+        // WAITING QUEUE PATIENT CARD (Refined Clinical Hierarchy)
+        // =========================================================================
+        const PatientCard = ({
+            patient, userRole, priorityScore, waitTime, queueNumber, isTVMode,
+            onCall, onUpdate, onBumpUp, onBumpDown, onCancel, onAcknowledge, onWardSend, currentTime
+        }) => {
+            const [ackName, setAckName] = React.useState('');
+            const [wardAckName, setWardAckName] = React.useState('');
+
+            const isLR = userRole === 'LR' || userRole === 'Admin';
+            const canEdit = isLR || patient.location === userRole;
+            const myAlertRole = isLR ? 'LR' : userRole;
+
+            const needsNormalAck = patient.lastVE?.alertRole === myAlertRole;
+            const reviewProg = getReviewProgress(patient.lastVE, currentTime);
+            const isReviewOverdue = Boolean(reviewProg?.isOverdue);
+            const needsReviewAck = isReviewOverdue && !patient.lastVE?.reviewAcked && isLR;
+            const hasActiveAlert = needsNormalAck || needsReviewAck;
+            const isAbnormalLiq = patient.membrane !== 'Intact' && !['Clear', 'N/A'].includes(patient.liquor);
+
+            let stripeColor = 'bg-emerald-500';
+            if (priorityScore > 40) stripeColor = 'bg-rose-500';
+            else if (priorityScore > 20) stripeColor = 'bg-amber-500';
+
+            return (
+                <div className={`card-enter relative rounded-xl border bg-white dark:bg-slate-900 shadow-sm overflow-hidden transition-all ${
+                    hasActiveAlert
+                        ? 'border-rose-500 alert-ring'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-teal-300 dark:hover:border-teal-700'
+                }`}>
+                    {/* Left Severity Edge Bar */}
+                    <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${stripeColor}`} />
+
+                    <div className="pl-4 pr-3.5 py-3">
+                        {/* Persistent Red Alert Box */}
+                        {hasActiveAlert && (
+                            <div className="bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-lg p-2.5 mb-2.5">
+                                <div className="text-rose-700 dark:text-rose-300 font-bold text-[11px] flex items-center gap-1.5 uppercase tracking-wide mb-1.5">
+                                    <i className="ph-fill ph-warning-circle text-base animate-pulse"></i>
+                                    {needsNormalAck ? patient.lastVE?.alertMsg : 'Next Review Overdue'}
+                                </div>
+                                {!isTVMode && (
+                                    <div className="flex gap-1.5">
+                                        <input
+                                            type="text"
+                                            value={ackName}
+                                            onChange={e => setAckName(e.target.value)}
+                                            placeholder="Your Name (MO/SN)"
+                                            className="flex-1 min-w-0 text-xs px-2.5 py-1.5 rounded-md border border-rose-300 dark:border-rose-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-rose-500"
+                                        />
+                                        <button
+                                            onClick={() => { if (ackName.trim()) { onAcknowledge(patient.id, ackName.trim(), needsNormalAck ? 'NORMAL' : 'REVIEW'); setAckName(''); } }}
+                                            className="bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-md transition"
+                                        >
+                                            ACK
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Header Row */}
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2.5 min-w-0">
+                                <span className="font-mono text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5">
+                                    #{queueNumber}
+                                </span>
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <h3 className={`font-bold text-slate-900 dark:text-white leading-snug truncate ${isTVMode ? 'text-base' : 'text-sm'}`}>
+                                            {patient.name}
+                                        </h3>
+                                        {patient.manualOverride !== null && Number(patient.manualOverride) !== 0 && (
+                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                                                patient.manualOverride > 0
+                                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
+                                                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                            }`}>
+                                                MO {patient.manualOverride > 0 ? `+${patient.manualOverride}` : patient.manualOverride}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                                        {patient.ic} • G{patient.gravida}P{patient.para} • {patient.poa}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                                <DilationBadge dilation={patient.lastVE?.dilation} compact />
+                                <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+                                    <span className="text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/60 px-1.5 py-0.5 rounded">{patient.location}</span>
+                                    <span className="font-mono text-slate-500 dark:text-slate-400">{waitTime}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Clinical Tags */}
+                        <div className="flex flex-wrap gap-1 mt-2">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                patient.admissionType?.includes('IOL')
+                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800'
+                                    : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                            }`}>
+                                {patient.admissionType}
+                            </span>
+                            {patient.gbs && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800">
+                                    GBS +ve
+                                </span>
+                            )}
+                            {patient.epidural && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800">
+                                    Epidural
+                                </span>
+                            )}
+                            {patient.issues && patient.issues.map((issue, idx) => (
+                                <span key={idx} className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50/80 text-amber-800 border border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60">
+                                    {issue}
+                                </span>
+                            ))}
+                        </div>
+
+                        {/* Clinical Metrics Row */}
+                        <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-slate-600 dark:text-slate-300 truncate">
+                                    Cx {patient.lastVE?.cervix || '-'} <span className="font-mono text-[10px] text-slate-400">({formatDateTimeDisp(patient.lastVE?.time)})</span>
+                                </span>
+                                <span className={`font-bold shrink-0 px-1.5 py-0.5 rounded text-[11px] ${
+                                    patient.ctg === 'Pathological'
+                                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                                        : patient.ctg === 'Suspicious'
+                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                            : 'text-emerald-700 dark:text-emerald-400'
+                                }`}>
+                                    CTG: {patient.ctg}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2 text-[11px]">
+                                <span className={isAbnormalLiq ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-500 dark:text-slate-400 font-medium'}>
+                                    {formatMembraneLiquor(patient)}
+                                </span>
+                                {reviewProg && (
+                                    <span className={`font-mono font-bold ${reviewProg.isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                                        Rev {reviewProg.nextTimeStr}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Called / Action Footer */}
+                        {patient.status === 'CALLED' ? (
+                            <div className="mt-3 bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800 rounded-lg p-2.5">
+                                <div className="flex items-center justify-between text-xs font-bold text-sky-800 dark:text-sky-300 mb-2">
+                                    <span className="flex items-center gap-1.5">
+                                        <i className="ph-fill ph-bell-ringing animate-bounce"></i> CALLED TO {patient.calledToBed}
+                                    </span>
+                                    <span className="font-mono text-[11px]">{formatDateTimeDisp(patient.callTime)}</span>
+                                </div>
+                                {!isLR && !isTVMode ? (
+                                    canEdit ? (
+                                        <div className="flex gap-1.5">
+                                            <input
+                                                type="text"
+                                                value={wardAckName}
+                                                onChange={e => setWardAckName(e.target.value)}
+                                                placeholder="Sent By (Staff Name)"
+                                                className="flex-1 min-w-0 text-xs px-2.5 py-1.5 rounded-md border border-sky-300 dark:border-sky-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-sky-500"
+                                            />
+                                            <button
+                                                onClick={() => { if (wardAckName.trim()) { onWardSend(patient.id, wardAckName.trim()); setWardAckName(''); } }}
+                                                className="bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold px-3 py-1.5 rounded-md transition shrink-0"
+                                            >
+                                                Send
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center text-[11px] font-medium text-sky-700 dark:text-sky-400">
+                                            Awaiting {patient.location} Transfer
+                                        </div>
+                                    )
+                                ) : (
+                                    <div className="text-center text-[11px] font-medium text-sky-700 dark:text-sky-400">
+                                        Awaiting Ward Transfer
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            !isTVMode && (
+                                <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                                    <div className="flex items-center gap-1.5">
+                                        {!isLR ? (
+                                            canEdit ? (
+                                                <>
+                                                    <button
+                                                        onClick={onUpdate}
+                                                        className="flex-1 py-1.5 px-2.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 transition flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <i className="ph-bold ph-pencil-simple"></i> Update VE
+                                                    </button>
+                                                    <button
+                                                        onClick={onCancel}
+                                                        className="py-1.5 px-2.5 rounded-lg text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <div className="w-full text-center py-1 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                                                    View Only • Booked by {patient.location}
+                                                </div>
+                                            )
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={onCall}
+                                                    className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white shadow-sm transition flex items-center justify-center gap-1.5"
+                                                >
+                                                    <i className="ph-bold ph-bed"></i> Call to Bed
+                                                </button>
+                                                <button
+                                                    onClick={onBumpUp}
+                                                    title="Nudge Priority Up (+10)"
+                                                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-amber-600 hover:border-amber-300 dark:hover:bg-slate-800 transition"
+                                                >
+                                                    <i className="ph-bold ph-arrow-up"></i>
+                                                </button>
+                                                <button
+                                                    onClick={onBumpDown}
+                                                    title="Nudge Priority Down (-10)"
+                                                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition"
+                                                >
+                                                    <i className="ph-bold ph-arrow-down"></i>
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
+                                        <span>Booked: <strong className="text-slate-600 dark:text-slate-300">{patient.bookedBy || 'Unknown'}</strong></span>
+                                        {patient.notedBy ? (
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                                                <i className="ph-fill ph-check-circle"></i> {patient.notedBy}
+                                            </span>
+                                        ) : (
+                                            <span className="text-amber-600 dark:text-amber-400 font-semibold">Pending Ack</span>
+                                        )}
+                                    </div>
+                                </div>
+                            )
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // =========================================================================
+        // SLIDE-OVER BOOKING DRAWER (Tactile Pill Selectors)
+        // =========================================================================
+        const BookingDrawer = ({ userWard, onClose, onSave }) => {
+            const [admissionType, setAdmissionType] = React.useState('Spontaneous');
+            const [membrane, setMembrane] = React.useState('Intact');
+            const [liquor, setLiquor] = React.useState('Clear');
+            const [ctg, setCtg] = React.useState('Normal');
+            const [reviewInterval, setReviewInterval] = React.useState('4');
+            const [gbs, setGbs] = React.useState(false);
+            const [epidural, setEpidural] = React.useState(false);
+            const [hasScar, setHasScar] = React.useState(false);
+            const [isHPT, setIsHPT] = React.useState(false);
+            const [isObese, setIsObese] = React.useState(false);
+            const [iolMethods, setIolMethods] = React.useState([]);
+
+            const toggleIolMethod = (m) => {
+                setIolMethods(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
+            };
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const issues = [];
+                if (hasScar) issues.push('1 Prev Scar');
+                if (isHPT) {
+                    const hptType = fd.get('hpt_type');
+                    const hptTx = fd.get('hpt_treatment') === 'yes' ? '(On Tx)' : '(No Tx)';
+                    if (hptType) issues.push(`${hptType} ${hptTx}`);
+                }
+                if (isObese) issues.push(`Obesity BMI ${fd.get('bmi_value') || 'Unknown'}`);
+                if (fd.get('issue_size')) issues.push(fd.get('issue_size'));
+                const otherIssues = fd.get('other_issues');
+                if (otherIssues) otherIssues.split(',').forEach(i => { if (i.trim()) issues.push(i.trim()); });
+
+                let finalAdmissionType = admissionType;
+                if (admissionType === 'IOL' && fd.get('iol_indication')) {
+                    finalAdmissionType = `IOL - ${fd.get('iol_indication')}`;
+                    if (iolMethods.length > 0) finalAdmissionType += ` (${iolMethods.join(' + ')})`;
+                }
+
+                const veTime = fd.get('veTime');
+                const romTime = membrane === 'Intact' ? null : (fd.get('romTime') || null);
+
+                let nextReviewTime = null;
+                if (reviewInterval) {
+                    const veDate = parseSafeDate(veTime) || new Date();
+                    veDate.setHours(veDate.getHours() + parseInt(reviewInterval, 10));
+                    nextReviewTime = toLocalISOString(veDate);
+                }
+
+                onSave({
+                    id: Date.now().toString(),
+                    name: fd.get('name'),
+                    ic: fd.get('ic'),
+                    location: userWard,
+                    bookingTime: toLocalISOString(new Date()),
+                    bookedBy: fd.get('bookedBy'),
+                    notedBy: null,
+                    notedTime: null,
+                    gravida: fd.get('gravida'),
+                    para: fd.get('para'),
+                    poa: fd.get('poa'),
+                    issues: issues.filter(Boolean),
+                    admissionType: finalAdmissionType,
+                    gbs,
+                    epidural,
+                    lastVE: {
+                        time: veTime,
+                        dilation: fd.get('veDilation'),
+                        cervix: fd.get('veCervix'),
+                        nextReviewTime
+                    },
+                    membrane,
+                    liquor: membrane === 'Intact' ? 'N/A' : liquor,
+                    romTime,
+                    ctg,
+                    status: 'WAITING',
+                    assignedBed: null,
+                    deliveryTime: null,
+                    basePriority: 0,
+                    manualOverride: 0
+                });
+            };
+
+            const pillClass = (active, color = 'teal') => {
+                if (!active) return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-transparent hover:bg-slate-200 dark:hover:bg-slate-700';
+                if (color === 'rose') return 'bg-rose-600 text-white border-rose-600 shadow-sm';
+                if (color === 'amber') return 'bg-amber-500 text-white border-amber-500 shadow-sm';
+                if (color === 'emerald') return 'bg-emerald-600 text-white border-emerald-600 shadow-sm';
+                if (color === 'sky') return 'bg-sky-600 text-white border-sky-600 shadow-sm';
+                return 'bg-teal-600 text-white border-teal-600 shadow-sm';
+            };
+
+            return (
+                <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/50 backdrop-blur-sm">
+                    <div className="drawer-enter w-full max-w-xl bg-white dark:bg-slate-900 h-full shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col">
+                        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    <i className="ph-fill ph-plus-circle text-teal-600"></i> Book Labour Room Bed
+                                </h2>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Booking from <strong className="text-teal-700 dark:text-teal-400">Ward {userWard}</strong></p>
+                            </div>
+                            <button onClick={onClose} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                                <i className="ph-bold ph-x text-xl"></i>
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5">
+                            {/* Patient Details */}
+                            <div className="space-y-3">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">1. Patient & Booking Details</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Patient Full Name</label>
+                                        <input required name="name" type="text" placeholder="e.g. Siti Aminah binti Ali" className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm focus:bg-white dark:focus:bg-slate-900 focus:border-teal-500 outline-none" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">IC / Passport / MRN</label>
+                                        <input required name="ic" type="text" placeholder="e.g. 950412-10-5432" className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-mono focus:bg-white dark:focus:bg-slate-900 focus:border-teal-500 outline-none" />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-12 gap-3">
+                                    <div className="col-span-12 sm:col-span-5">
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Booked By (Staff Name)</label>
+                                        <input required name="bookedBy" type="text" placeholder="Dr. / SN Name" className="w-full rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/50 dark:bg-teal-950/30 px-3 py-2 text-sm focus:bg-white dark:focus:bg-slate-900 focus:border-teal-500 outline-none" />
+                                    </div>
+                                    <div className="col-span-4 sm:col-span-2">
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Gravida</label>
+                                        <input required name="gravida" type="number" min="1" placeholder="G" className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-mono outline-none focus:border-teal-500" />
+                                    </div>
+                                    <div className="col-span-4 sm:col-span-2">
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Para</label>
+                                        <input required name="para" type="number" min="0" placeholder="P" className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-mono outline-none focus:border-teal-500" />
+                                    </div>
+                                    <div className="col-span-4 sm:col-span-3">
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">POA (W+D)</label>
+                                        <input required name="poa" type="text" placeholder="39+2" className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-mono outline-none focus:border-teal-500" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Admission Type & Risks */}
+                            <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">2. Labour Mode & Risk Factors</h3>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {['Spontaneous', 'IOL'].map(type => (
+                                        <button
+                                            key={type}
+                                            type="button"
+                                            onClick={() => setAdmissionType(type)}
+                                            className={`py-2 px-3 rounded-lg text-xs font-bold border transition ${pillClass(admissionType === type)}`}
+                                        >
+                                            {type === 'IOL' ? 'IOL (Induction of Labour)' : 'Spontaneous Labour'}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {admissionType === 'IOL' && (
+                                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Indication for IOL</label>
+                                            <input required name="iol_indication" type="text" placeholder="e.g. Postdates, GDM, Oligohydramnios" className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm outline-none focus:border-teal-500" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Methods Used</label>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {['Prostin x1', 'Prostin x2', 'Prostin x3', 'Foley', 'S&S'].map(m => (
+                                                    <button
+                                                        key={m}
+                                                        type="button"
+                                                        onClick={() => toggleIolMethod(m)}
+                                                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition ${pillClass(iolMethods.includes(m))}`}
+                                                    >
+                                                        {m}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Tactile Risk Pills */}
+                                <div className="flex flex-wrap gap-2">
+                                    <button type="button" onClick={() => setGbs(!gbs)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${pillClass(gbs, 'rose')}`}>
+                                        GBS Positive
+                                    </button>
+                                    <button type="button" onClick={() => setEpidural(!epidural)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${pillClass(epidural, 'sky')}`}>
+                                        Epidural Req.
+                                    </button>
+                                    <button type="button" onClick={() => setHasScar(!hasScar)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${pillClass(hasScar, 'amber')}`}>
+                                        1 Prev Scar
+                                    </button>
+                                    <button type="button" onClick={() => setIsHPT(!isHPT)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${pillClass(isHPT, 'amber')}`}>
+                                        HPT / PIH / PE
+                                    </button>
+                                    <button type="button" onClick={() => setIsObese(!isObese)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${pillClass(isObese)}`}>
+                                        Obesity
+                                    </button>
+                                </div>
+
+                                {isHPT && (
+                                    <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                                        <select name="hpt_type" required className="rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 px-2.5 py-2 text-xs font-semibold outline-none">
+                                            <option value="">Select Diagnosis...</option>
+                                            <option value="Chronic HPT">Chronic HPT</option>
+                                            <option value="PIH">PIH</option>
+                                            <option value="PE">Pre-eclampsia (PE)</option>
+                                        </select>
+                                        <select name="hpt_treatment" required className="rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 px-2.5 py-2 text-xs font-semibold outline-none">
+                                            <option value="">Treatment Status...</option>
+                                            <option value="yes">On Treatment</option>
+                                            <option value="no">No Treatment</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                    {isObese && (
+                                        <input required type="number" step="0.1" name="bmi_value" placeholder="BMI (e.g. 38.5)" className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono outline-none focus:border-teal-500" />
+                                    )}
+                                    <select name="issue_size" className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-medium outline-none focus:border-teal-500">
+                                        <option value="">Normal Fetal Growth</option>
+                                        <option value="LGA">LGA (Macrosomia)</option>
+                                        <option value="SGA/FGR">SGA / FGR</option>
+                                    </select>
+                                    <input type="text" name="other_issues" placeholder="Other issues (comma separated)" className={`${isObese ? 'sm:col-span-1' : 'sm:col-span-2'} rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs outline-none focus:border-teal-500`} />
+                                </div>
+                            </div>
+
+                            {/* Latest VE, Membranes & CTG */}
+                            <div className="space-y-3.5 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">3. Clinical Assessment (VE & CTG)</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                                    <div className="sm:col-span-6">
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">VE Date & Time</label>
+                                        <CustomDateTimePicker name="veTime" />
+                                    </div>
+                                    <div className="sm:col-span-3">
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Os (cm)</label>
+                                        <input required name="veDilation" type="number" min="0" max="10" placeholder="0-10" className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-mono font-bold outline-none focus:border-teal-500" />
+                                    </div>
+                                    <div className="sm:col-span-3">
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Cx Effacement</label>
+                                        <input required name="veCervix" type="text" placeholder="e.g. 1cm" className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:border-teal-500" />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Next Review Timer</label>
+                                    <div className="grid grid-cols-5 gap-1.5">
+                                        {[
+                                            { v: '', label: 'None' },
+                                            { v: '1', label: '1h' },
+                                            { v: '2', label: '2h' },
+                                            { v: '3', label: '3h' },
+                                            { v: '4', label: '4h' }
+                                        ].map(opt => (
+                                            <button key={opt.v} type="button" onClick={() => setReviewInterval(opt.v)} className={`py-2 rounded-lg text-xs font-bold border transition ${pillClass(reviewInterval === opt.v)}`}>
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Membranes</label>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                                        {[
+                                            { v: 'Intact', label: 'Intact (MI)' },
+                                            { v: 'SROM', label: 'SROM' },
+                                            { v: 'PROM_MI', label: 'PROM/Hind' },
+                                            { v: 'ARM', label: 'ARM' }
+                                        ].map(opt => (
+                                            <button key={opt.v} type="button" onClick={() => setMembrane(opt.v)} className={`py-2 rounded-lg text-xs font-bold border transition ${pillClass(membrane === opt.v)}`}>
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {membrane !== 'Intact' && (
+                                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">ROM Date & Time</label>
+                                            <CustomDateTimePicker name="romTime" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Liquor Colour</label>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {['Clear', 'LMSL', 'MMSL', 'TMSL', 'Blood stained'].map(l => (
+                                                    <button
+                                                        key={l}
+                                                        type="button"
+                                                        onClick={() => setLiquor(l)}
+                                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${pillClass(
+                                                            liquor === l,
+                                                            ['TMSL', 'Blood stained'].includes(l) ? 'rose' : l === 'MMSL' ? 'amber' : 'teal'
+                                                        )}`}
+                                                    >
+                                                        {l}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Current CTG</label>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[
+                                            { v: 'Normal', color: 'emerald' },
+                                            { v: 'Suspicious', color: 'amber' },
+                                            { v: 'Pathological', color: 'rose' }
+                                        ].map(opt => (
+                                            <button key={opt.v} type="button" onClick={() => setCtg(opt.v)} className={`py-2.5 rounded-lg text-xs font-bold border transition ${pillClass(ctg === opt.v, opt.color)}`}>
+                                                {opt.v}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
+                                <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                                    Cancel
+                                </button>
+                                <button type="submit" className="px-6 py-2.5 rounded-lg text-sm font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-md shadow-teal-600/20 transition">
+                                    Submit Booking
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // =========================================================================
+        // SLIDE-OVER UPDATE VE DRAWER (Sub-5-Second Updates)
+        // =========================================================================
+        const UpdateDrawer = ({ patient, onClose, onSave }) => {
+            const [membrane, setMembrane] = React.useState(patient.membrane || 'Intact');
+            const [liquor, setLiquor] = React.useState(patient.liquor && patient.liquor !== 'N/A' ? patient.liquor : 'Clear');
+            const [ctg, setCtg] = React.useState(patient.ctg || 'Normal');
+            const [reviewInterval, setReviewInterval] = React.useState('');
+            const [epidural, setEpidural] = React.useState(Boolean(patient.epidural));
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const veTime = fd.get('veTime');
+                const romTime = membrane === 'Intact' ? null : (fd.get('romTime') || null);
+
+                let nextReviewTime = patient.lastVE?.nextReviewTime || null;
+                if (reviewInterval === 'CLEAR') {
+                    nextReviewTime = null;
+                } else if (reviewInterval) {
+                    const veDate = parseSafeDate(veTime) || new Date();
+                    veDate.setHours(veDate.getHours() + parseInt(reviewInterval, 10));
+                    nextReviewTime = toLocalISOString(veDate);
+                }
+
+                onSave({
+                    id: patient.id,
+                    lastVE: {
+                        ...patient.lastVE,
+                        time: veTime,
+                        dilation: fd.get('veDilation'),
+                        cervix: fd.get('veCervix'),
+                        nextReviewTime
+                    },
+                    membrane,
+                    liquor: membrane === 'Intact' ? 'N/A' : liquor,
+                    romTime,
+                    ctg,
+                    epidural
+                });
+            };
+
+            const pillClass = (active, color = 'teal') => {
+                if (!active) return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-transparent hover:bg-slate-200 dark:hover:bg-slate-700';
+                if (color === 'rose') return 'bg-rose-600 text-white border-rose-600 shadow-sm';
+                if (color === 'amber') return 'bg-amber-500 text-white border-amber-500 shadow-sm';
+                if (color === 'emerald') return 'bg-emerald-600 text-white border-emerald-600 shadow-sm';
+                if (color === 'sky') return 'bg-sky-600 text-white border-sky-600 shadow-sm';
+                return 'bg-teal-600 text-white border-teal-600 shadow-sm';
+            };
+
+            return (
+                <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/50 backdrop-blur-sm">
+                    <div className="drawer-enter w-full max-w-md bg-white dark:bg-slate-900 h-full shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col">
+                        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+                            <div className="min-w-0">
+                                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Update Clinical Status</h2>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{patient.name} • {patient.assignedBed || patient.location}</p>
+                            </div>
+                            <button onClick={onClose} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                                <i className="ph-bold ph-x text-xl"></i>
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5">
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">VE Date & Time</label>
+                                    <CustomDateTimePicker name="veTime" defaultValue={patient.lastVE?.time} />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Os Dilation (cm)</label>
+                                        <input required name="veDilation" type="number" min="0" max="10" defaultValue={patient.lastVE?.dilation} className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-base font-mono font-bold outline-none focus:border-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Cervix Effacement</label>
+                                        <input required name="veCervix" type="text" defaultValue={patient.lastVE?.cervix} className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:border-teal-500" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Plan Next Partogram Review</label>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                    {[
+                                        { v: '', label: 'Keep Current' },
+                                        { v: '1', label: '+1 Hour' },
+                                        { v: '2', label: '+2 Hours' },
+                                        { v: '3', label: '+3 Hours' },
+                                        { v: '4', label: '+4 Hours' },
+                                        { v: 'CLEAR', label: 'Clear Timer' }
+                                    ].map(opt => (
+                                        <button
+                                            key={opt.v}
+                                            type="button"
+                                            onClick={() => setReviewInterval(opt.v)}
+                                            className={`py-2 rounded-lg text-xs font-bold border transition ${pillClass(reviewInterval === opt.v, opt.v === 'CLEAR' ? 'rose' : 'teal')}`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Membranes</label>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                    {[
+                                        { v: 'Intact', label: 'Intact (MI)' },
+                                        { v: 'SROM', label: 'SROM' },
+                                        { v: 'PROM_MI', label: 'PROM / Hindwater' },
+                                        { v: 'ARM', label: 'ARM' }
+                                    ].map(opt => (
+                                        <button key={opt.v} type="button" onClick={() => setMembrane(opt.v)} className={`py-2 rounded-lg text-xs font-bold border transition ${pillClass(membrane === opt.v)}`}>
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {membrane !== 'Intact' && (
+                                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">ROM Date & Time</label>
+                                        <CustomDateTimePicker name="romTime" defaultValue={patient.romTime} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Liquor Colour</label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {['Clear', 'LMSL', 'MMSL', 'TMSL', 'Blood stained'].map(l => (
+                                                <button
+                                                    key={l}
+                                                    type="button"
+                                                    onClick={() => setLiquor(l)}
+                                                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition ${pillClass(
+                                                        liquor === l,
+                                                        ['TMSL', 'Blood stained'].includes(l) ? 'rose' : l === 'MMSL' ? 'amber' : 'teal'
+                                                    )}`}
+                                                >
+                                                    {l}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">CTG Status</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { v: 'Normal', color: 'emerald' },
+                                        { v: 'Suspicious', color: 'amber' },
+                                        { v: 'Pathological', color: 'rose' }
+                                    ].map(opt => (
+                                        <button key={opt.v} type="button" onClick={() => setCtg(opt.v)} className={`py-2.5 rounded-lg text-xs font-bold border transition ${pillClass(ctg === opt.v, opt.color)}`}>
+                                            {opt.v}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <button
+                                    type="button"
+                                    onClick={() => setEpidural(!epidural)}
+                                    className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-2 ${pillClass(epidural, 'sky')}`}
+                                >
+                                    <i className={`ph-fill ${epidural ? 'ph-check-circle' : 'ph-circle'}`}></i>
+                                    Epidural (Active / Requested)
+                                </button>
+                            </div>
+
+                            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
+                                <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                                    Cancel
+                                </button>
+                                <button type="submit" className="px-6 py-2.5 rounded-lg text-sm font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-md shadow-teal-600/20 transition">
+                                    Save Update
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // =========================================================================
+        // 2-COLUMN CALL / MOVE BED MODAL (Matches Exact Physical LR Layout)
+        // =========================================================================
+        const AssignBedModal = ({ patient, activePatients, onClose, onConfirm, isMoveMode }) => {
+            const renderBedBtn = (bed) => {
+                const isOccupied = activePatients.some(p => p.assignedBed === bed && (p.status === 'IN_LR' || p.status === 'DELIVERED') && p.id !== patient.id);
+                const isReserved = activePatients.some(p => (p.status === 'CALLED' || p.status === 'EN_ROUTE') && p.calledToBed === bed);
+                const isUnavailable = isOccupied || isReserved;
+                const isOverflow = bed.includes('Overflow');
+
+                return (
+                    <button
+                        key={bed}
+                        disabled={isUnavailable}
+                        onClick={() => onConfirm(bed)}
+                        className={`p-2.5 rounded-xl border text-xs font-bold transition flex flex-col items-center justify-center min-h-[52px] ${
+                            isUnavailable
+                                ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800 cursor-not-allowed'
+                                : isOverflow
+                                    ? 'bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                                    : 'bg-white dark:bg-slate-800 text-teal-800 dark:text-teal-300 border-slate-200 dark:border-slate-700 hover:border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/40'
+                        }`}
+                    >
+                        <span>{bed}</span>
+                        {isOccupied && <span className="text-[10px] font-normal">Occupied</span>}
+                        {isReserved && <span className="text-[10px] font-semibold text-sky-500">Incoming</span>}
+                    </button>
+                );
+            };
+
+            return (
+                <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="card-enter bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-md p-5">
+                        <div className="flex items-start justify-between mb-3">
+                            <div>
+                                <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                                    {isMoveMode ? 'Move Patient to Bed' : 'Assign Bed & Call Patient'}
+                                </h2>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{patient.name}</p>
+                            </div>
+                            <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+                                <i className="ph-bold ph-x"></i>
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 mb-4">
+                            <div className="flex flex-col gap-2">{LR_BEDS_LEFT.map(renderBedBtn)}</div>
+                            <div className="flex flex-col gap-2">{LR_BEDS_RIGHT.map(renderBedBtn)}</div>
+                        </div>
+
+                        <button onClick={onClose} className="w-full py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // =========================================================================
+        // DELIVERY MODAL & ADMIN PASSWORD MODAL
+        // =========================================================================
+        const DeliveryModal = ({ patient, onClose, onConfirm }) => {
+            const now = new Date();
+            const defaultTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            return (
+                <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="card-enter bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-sm p-6">
+                        <h2 className="text-base font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-2 mb-1">
+                            <i className="ph-fill ph-baby text-xl"></i> Record Delivery
+                        </h2>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">{patient.name}</p>
+                        <form onSubmit={(e) => { e.preventDefault(); onConfirm(e.target.deliveryTime.value); }} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Exact Time of Delivery</label>
+                                <input required name="deliveryTime" type="time" defaultValue={defaultTime} className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 py-3 text-xl font-mono font-bold text-center outline-none focus:border-emerald-500" />
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2">
+                                <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
+                                <button type="submit" className="px-5 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">Confirm Delivery</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        const SettingsModal = ({ passwords, onClose, onSave }) => {
+            const [localPwds, setLocalPwds] = React.useState(passwords);
+            return (
+                <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="card-enter bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-sm p-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <i className="ph-fill ph-lock-key text-teal-600"></i> Department Passwords
+                            </h2>
+                            <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+                                <i className="ph-bold ph-x"></i>
+                            </button>
+                        </div>
+                        <form onSubmit={(e) => { e.preventDefault(); onSave(localPwds); }} className="space-y-3">
+                            {Object.entries(localPwds).map(([role, pwd]) => (
+                                <div key={role} className="flex items-center gap-3">
+                                    <label className="w-16 text-xs font-bold text-slate-600 dark:text-slate-300">{role}</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={pwd}
+                                        onChange={e => setLocalPwds({ ...localPwds, [role]: e.target.value })}
+                                        className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-mono outline-none focus:border-teal-500"
+                                    />
+                                </div>
+                            ))}
+                            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
+                                <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
+                                <button type="submit" className="px-5 py-2 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-sm">Save Changes</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // =========================================================================
+        // MODERN MEDICAL LOGIN SCREEN
+        // =========================================================================
+        const LoginScreen = ({ onLogin, onStartDemo, passwords, darkMode, setDarkMode }) => {
+            const [errorMsg, setErrorMsg] = React.useState('');
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                const role = e.target.role.value;
+                const pwd = e.target.password.value;
+                if (passwords[role] && pwd === passwords[role]) {
+                    setErrorMsg('');
+                    onLogin(role);
+                } else {
+                    setErrorMsg('Incorrect password for the selected department.');
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-slate-100 via-teal-50/40 to-slate-200 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex flex-col items-center justify-center p-4 relative">
+                    <button
+                        onClick={() => setDarkMode(!darkMode)}
+                        className="absolute top-4 right-4 p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 shadow-sm hover:bg-white dark:hover:bg-slate-800 transition"
+                        title="Toggle Dark Mode"
+                    >
+                        <i className={`ph-fill ${darkMode ? 'ph-sun text-amber-400' : 'ph-moon text-slate-600'} text-lg`}></i>
+                    </button>
+
+                    <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden">
+                        <div className="bg-slate-900 dark:bg-slate-950 px-8 py-6 text-center border-b border-slate-800">
+                            <div className="w-12 h-12 rounded-xl bg-teal-500/15 border border-teal-500/30 flex items-center justify-center mx-auto mb-3">
+                                <i className="ph-fill ph-heartbeat text-3xl text-teal-400"></i>
+                            </div>
+                            <h1 className="text-xl font-extrabold text-white tracking-tight">LR Smart Board</h1>
+                            <p className="text-xs text-slate-400 mt-1">O&G • Hospital Tengku Permaisuri Norashikin</p>
+                        </div>
+
+                        <div className="p-7">
+                            {errorMsg && (
+                                <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
+                                    <i className="ph-fill ph-warning-circle text-base shrink-0"></i>
+                                    <span>{errorMsg}</span>
+                                </div>
+                            )}
+
+                            <form onSubmit={handleLogin} className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Department</label>
+                                    <select name="role" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm font-semibold text-slate-800 dark:text-white outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20">
+                                        <option value="LR">Labour Room (LR)</option>
+                                        <option value="PAC">PAC</option>
+                                        <option value="7A">Ward 7A</option>
+                                        <option value="7B">Ward 7B</option>
+                                        <option value="Admin">System Admin</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Password</label>
+                                    <input
+                                        required
+                                        type="password"
+                                        name="password"
+                                        placeholder="Enter department password"
+                                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-white outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                                    />
+                                </div>
+                                <button type="submit" className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl shadow-md shadow-teal-600/20 transition text-sm">
+                                    Sign In to Live Board
+                                </button>
+                            </form>
+
+                            <div className="relative my-5">
+                                <div className="absolute inset-0 flex items-center">
+                                    <div className="w-full border-t border-slate-200 dark:border-slate-800"></div>
+                                </div>
+                                <div className="relative flex justify-center text-[11px] uppercase font-bold tracking-wider">
+                                    <span className="bg-white dark:bg-slate-900 px-3 text-slate-400">Or Explore UI</span>
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={onStartDemo}
+                                className="w-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 transition text-xs flex items-center justify-center gap-2"
+                            >
+                                <i className="ph-fill ph-sparkle text-teal-600 dark:text-teal-400 text-base"></i>
+                                Preview Redesign with Sample Data (Demo Mode)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // =========================================================================
+        // MAIN APPLICATION SHELL
+        // =========================================================================
+        const App = () => {
+            const [userRole, setUserRole] = React.useState(null);
+            const [isDemoMode, setIsDemoMode] = React.useState(false);
+            const [patients, setPatients] = React.useState([]);
+            const [passwords, setPasswords] = React.useState(null);
+
+            const [isSyncing, setIsSyncing] = React.useState(false);
+            const [darkMode, setDarkMode] = React.useState(false);
+            const [isTVMode, setIsTVMode] = React.useState(false);
+            const [isMuted, setIsMuted] = React.useState(false);
+            const [mobileTab, setMobileTab] = React.useState('BOARD'); // 'QUEUE' | 'BOARD'
+            const [queueFilter, setQueueFilter] = React.useState('ALL'); // 'ALL' | 'HIGH' | 'CALLED' | 'MINE'
+
+            const [isBookingOpen, setIsBookingOpen] = React.useState(false);
+            const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+            const [updateModalPatient, setUpdateModalPatient] = React.useState(null);
+            const [assignBedPatient, setAssignBedPatient] = React.useState(null);
+            const [moveBedPatient, setMoveBedPatient] = React.useState(null);
+            const [deliverModalPatient, setDeliverModalPatient] = React.useState(null);
+            const [toast, setToast] = React.useState(null);
+
+            const [currentTime, setCurrentTime] = React.useState(Date.now());
+            const prevPatientsRef = React.useRef([]);
+            const isSyncingRef = React.useRef(false);
+            const isDemoRef = React.useRef(false);
+
+            React.useEffect(() => {
+                isDemoRef.current = isDemoMode;
+            }, [isDemoMode]);
+
+            // Sync Dark Mode Class on <html>
+            React.useEffect(() => {
+                document.documentElement.classList.toggle('dark', darkMode);
+            }, [darkMode]);
+
+            // Fetch Live Data
+            const fetchPatients = async () => {
+                if (isSyncingRef.current || isDemoRef.current) return;
+                try {
+                    const response = await fetch(API_URL);
+                    const textData = await response.text();
+                    const data = JSON.parse(textData);
+                    if (Array.isArray(data)) {
+                        setPatients(data);
+                    } else {
+                        setPatients(data.patients || []);
+                        if (data.passwords) setPasswords(data.passwords);
+                    }
+                } catch (err) {
+                    console.warn('Database sync skipped or offline:', err);
+                }
+            };
+
+            const syncToDB = (action, payload) => {
+                if (isDemoRef.current) return;
+                setIsSyncing(true);
+                isSyncingRef.current = true;
+                fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action, ...payload })
+                }).finally(() => {
+                    setTimeout(() => {
+                        setIsSyncing(false);
+                        isSyncingRef.current = false;
+                    }, 2500);
+                });
+            };
+
+            React.useEffect(() => {
+                fetchPatients();
+                const clockInterval = setInterval(() => setCurrentTime(Date.now()), 30000);
+                return () => clearInterval(clockInterval);
+            }, []);
+
+            React.useEffect(() => {
+                if (userRole && !isDemoMode) {
+                    const pollInterval = setInterval(fetchPatients, 5000);
+                    return () => clearInterval(pollInterval);
+                }
+            }, [userRole, isDemoMode]);
+
+            // Sound Alert Listener
+            React.useEffect(() => {
+                if (!userRole) return;
+                let shouldChime = false;
+                const myAlertRole = (userRole === 'LR' || userRole === 'Admin') ? 'LR' : userRole;
+
+                patients.forEach(p => {
+                    const prevP = prevPatientsRef.current.find(old => old.id === p.id);
+                    const hasNewAlert = p.lastVE?.alertRole === myAlertRole && (!prevP || prevP.lastVE?.alertRole !== myAlertRole);
+                    const nowOverdue = myAlertRole === 'LR' && p.lastVE?.nextReviewTime && currentTime > parseSafeDate(p.lastVE.nextReviewTime)?.getTime() && !p.lastVE?.reviewAcked;
+                    const prevOverdue = prevP && prevP.lastVE?.nextReviewTime && currentTime > parseSafeDate(prevP.lastVE.nextReviewTime)?.getTime() && !prevP.lastVE?.reviewAcked;
+                    if (hasNewAlert || (nowOverdue && !prevOverdue)) shouldChime = true;
+                });
+
+                if (shouldChime) playAlertSound('new_booking', isMuted);
+                prevPatientsRef.current = patients;
+            }, [patients, currentTime, userRole, isMuted]);
+
+            const showToast = (message, type = 'success') => {
+                setToast({ message, type });
+                setTimeout(() => setToast(null), 3500);
+            };
+
+            const handleUpdatePatient = (updatedPatient) => {
+                setPatients(prev => prev.map(p => p.id === updatedPatient.id ? updatedPatient : p));
+                syncToDB('UPDATE', { patient: updatedPatient });
+            };
+
+            const handleUpdatePasswords = (newPasswords) => {
+                setPasswords(newPasswords);
+                syncToDB('UPDATE_PASSWORDS', { passwords: newPasswords });
+                showToast('Department passwords updated');
+                setIsSettingsOpen(false);
+            };
+
+            const handleConfirmBedAssignment = (bed) => {
+                const updated = {
+                    ...assignBedPatient,
+                    status: 'CALLED',
+                    calledToBed: bed,
+                    callTime: toLocalISOString(new Date()),
+                    lastVE: { ...assignBedPatient.lastVE, alertRole: assignBedPatient.location, alertMsg: `CALLED TO ${bed}` }
+                };
+                handleUpdatePatient(updated);
+                playAlertSound('called', isMuted);
+                showToast(`${assignBedPatient.name} called to ${bed}`);
+                setAssignBedPatient(null);
+            };
+
+            const handleConfirmMoveBed = (bed) => {
+                handleUpdatePatient({ ...moveBedPatient, assignedBed: bed });
+                showToast(`Moved ${moveBedPatient.name} to ${bed}`);
+                setMoveBedPatient(null);
+            };
+
+            const handleWardSend = (id, staffName) => {
+                const p = patients.find(x => x.id === id);
+                if (!p) return;
+                handleUpdatePatient({
+                    ...p,
+                    status: 'EN_ROUTE',
+                    wardSendTime: toLocalISOString(new Date()),
+                    wardNotedBy: staffName,
+                    lastVE: { ...p.lastVE, alertRole: 'LR', alertMsg: `EN ROUTE (Sent by ${staffName})` }
+                });
+                playAlertSound('update', isMuted);
+                showToast('Transfer confirmed • Patient en route to LR');
+            };
+
+            const handlePatientArrived = (id) => {
+                const p = patients.find(x => x.id === id);
+                if (!p) return;
+                handleUpdatePatient({
+                    ...p,
+                    status: 'IN_LR',
+                    assignedBed: p.calledToBed,
+                    admissionTime: toLocalISOString(new Date()),
+                    lastVE: { ...p.lastVE, alertRole: null, alertMsg: null }
+                });
+                playAlertSound('update', isMuted);
+                showToast(`${p.name} arrived in ${p.calledToBed}`);
+            };
+
+            const handleSendToOT = (id) => {
+                const p = patients.find(x => x.id === id);
+                if (!p) return;
+                handleUpdatePatient({ ...p, status: 'IN_LR', assignedBed: 'OT' });
+                playAlertSound('critical', isMuted);
+                showToast(`URGENT: ${p.name} transferred to OT`, 'warning');
+            };
+
+            const handleConfirmDelivery = (time) => {
+                const today = new Date();
+                const [hrs, mins] = time.split(':');
+                today.setHours(parseInt(hrs, 10), parseInt(mins, 10), 0, 0);
+                handleUpdatePatient({
+                    ...deliverModalPatient,
+                    status: 'DELIVERED',
+                    deliveryTime: toLocalISOString(today),
+                    lastVE: { ...deliverModalPatient.lastVE, alertRole: null, alertMsg: null, reviewAcked: true }
+                });
+                showToast('Delivery recorded');
+                setDeliverModalPatient(null);
+            };
+
+            const handleClearBed = (id) => {
+                const p = patients.find(x => x.id === id);
+                if (!p) return;
+                const updated = { ...p, status: 'DISCHARGED', lastVE: { ...p.lastVE, alertRole: null, alertMsg: null, reviewAcked: true } };
+                setPatients(prev => prev.map(x => x.id === id ? updated : x));
+                syncToDB('UPDATE', { patient: updated });
+                showToast('Transferred to ward • Record archived');
+            };
+
+            const handleCancelBooking = (id) => {
+                const p = patients.find(x => x.id === id);
+                if (!p) return;
+                const updated = { ...p, status: 'CANCELLED', lastVE: { ...p.lastVE, alertRole: null, alertMsg: null, reviewAcked: true } };
+                setPatients(prev => prev.map(x => x.id === id ? updated : x));
+                syncToDB('UPDATE', { patient: updated });
+                showToast('Booking cancelled • Record archived');
+            };
+
+            const handleNudge = (id, delta) => {
+                const p = patients.find(x => x.id === id);
+                if (!p) return;
+                handleUpdatePatient({ ...p, manualOverride: (Number(p.manualOverride) || 0) + delta });
+                playAlertSound('update', isMuted);
+                showToast(delta > 0 ? 'Priority nudged UP' : 'Priority nudged DOWN');
+            };
+
+            const handleAcknowledgeAlert = (id, staffName, alertType) => {
+                const p = patients.find(x => x.id === id);
+                if (!p) return;
+                const updated = { ...p };
+                if (alertType === 'NORMAL') {
+                    if (updated.lastVE?.alertMsg === 'NEW BOOKING') {
+                        updated.notedBy = staffName;
+                        updated.notedTime = toLocalISOString(new Date());
+                    }
+                    updated.lastVE = {
+                        ...updated.lastVE,
+                        alertRole: null,
+                        alertMsg: null,
+                        lastGeneralAckBy: staffName,
+                        lastGeneralAckTime: toLocalISOString(new Date())
+                    };
+                } else {
+                    updated.lastVE = {
+                        ...updated.lastVE,
+                        reviewAcked: true,
+                        reviewAckBy: staffName,
+                        reviewAckTime: toLocalISOString(new Date())
+                    };
+                }
+                handleUpdatePatient(updated);
+                playAlertSound('update', isMuted);
+                showToast(`Acknowledged by ${staffName}`);
+            };
+
+            const handleNewBooking = (newPatient) => {
+                const withAlert = { ...newPatient, lastVE: { ...newPatient.lastVE, alertRole: 'LR', alertMsg: 'NEW BOOKING' } };
+                setPatients(prev => [...prev, withAlert]);
+                syncToDB('ADD', { patient: withAlert });
+                setIsBookingOpen(false);
+                playAlertSound('new_booking', isMuted);
+                showToast('New bed booking submitted');
+            };
+
+            const handleStatusUpdate = (updatedData) => {
+                const p = patients.find(x => x.id === updatedData.id);
+                if (!p) return;
+                const merged = { ...p, ...updatedData, manualOverride: 0 };
+                if (userRole !== 'LR' && userRole !== 'Admin') {
+                    merged.lastVE = { ...merged.lastVE, alertRole: 'LR', alertMsg: 'CLINICAL STATUS UPDATED' };
+                } else {
+                    merged.lastVE = { ...merged.lastVE, reviewAcked: false, alertRole: null, alertMsg: null };
+                }
+                handleUpdatePatient(merged);
+                setUpdateModalPatient(null);
+                playAlertSound('update', isMuted);
+                showToast('Clinical status updated');
+            };
+
+            const defaultPasswords = { LR: 'lr123', PAC: 'pac123', '7A': '7a123', '7B': '7b123', Admin: 'admin123' };
+            const activePasswords = passwords || defaultPasswords;
+
+            // LOGIN VIEW
+            if (!userRole) {
+                return (
+                    <LoginScreen
+                        passwords={activePasswords}
+                        darkMode={darkMode}
+                        setDarkMode={setDarkMode}
+                        onLogin={(role) => {
+                            setIsDemoMode(false);
+                            setUserRole(role);
+                            getAudioCtx();
+                            fetchPatients();
+                        }}
+                        onStartDemo={() => {
+                            setIsDemoMode(true);
+                            setPatients(getSamplePatients());
+                            setUserRole('LR');
+                            getAudioCtx();
+                        }}
+                    />
+                );
+            }
+
+            const isLR = userRole === 'LR' || userRole === 'Admin';
+
+            // Sorted Waiting Queue
+            const allWaiting = patients
+                .filter(p => p.status === 'WAITING' || p.status === 'CALLED')
+                .sort((a, b) => {
+                    if (a.status === 'CALLED' && b.status !== 'CALLED') return -1;
+                    if (b.status === 'CALLED' && a.status !== 'CALLED') return 1;
+                    if (a.status === 'CALLED' && b.status === 'CALLED') {
+                        return (parseSafeDate(a.callTime)?.getTime() || 0) - (parseSafeDate(b.callTime)?.getTime() || 0);
+                    }
+                    const diff = calculatePriority(b) - calculatePriority(a);
+                    if (diff !== 0) return diff;
+                    return (parseSafeDate(a.bookingTime)?.getTime() || 0) - (parseSafeDate(b.bookingTime)?.getTime() || 0);
+                });
+
+            const filteredWaiting = allWaiting.filter(p => {
+                if (queueFilter === 'HIGH') return calculatePriority(p) > 40;
+                if (queueFilter === 'CALLED') return p.status === 'CALLED';
+                if (queueFilter === 'MINE') return p.location === userRole;
+                return true;
+            });
+
+            // Live Telemetry Metrics
+            const countOccupied = (bedList) => bedList.filter(bed =>
+                patients.some(p => p.assignedBed === bed && (p.status === 'IN_LR' || p.status === 'DELIVERED'))
+            ).length;
+
+            const activeOcc = countOccupied(ZONE_ACTIVE_BEDS);
+            const specialtyOcc = countOccupied(ZONE_SPECIALTY_BEDS);
+            const overflowOcc = countOccupied(ZONE_OVERFLOW_BEDS);
+            const alertCount = patients.filter(p => {
+                if (p.status === 'DISCHARGED' || p.status === 'CANCELLED' || p.status === 'DELIVERED') return false;
+                const myRole = isLR ? 'LR' : userRole;
+                const normalAlert = p.lastVE?.alertRole === myRole;
+                const overdue = isLR && p.lastVE?.nextReviewTime && currentTime > parseSafeDate(p.lastVE.nextReviewTime)?.getTime() && !p.lastVE?.reviewAcked;
+                return normalAlert || overdue;
+            }).length;
+
+            const renderBedComponent = (bed, zoneFlags = {}) => {
+                const occupant = patients.find(p => p.assignedBed === bed && (p.status === 'IN_LR' || p.status === 'DELIVERED'));
+                const incoming = patients.find(p => p.calledToBed === bed && (p.status === 'CALLED' || p.status === 'EN_ROUTE'));
+                return (
+                    <BedSlot
+                        key={bed}
+                        bedName={bed}
+                        patient={occupant}
+                        incoming={incoming}
+                        isLR={isLR}
+                        isTVMode={isTVMode}
+                        currentTime={currentTime}
+                        onUpdate={() => setUpdateModalPatient(occupant)}
+                        onDeliver={() => setDeliverModalPatient(occupant)}
+                        onSendToOT={() => handleSendToOT(occupant?.id)}
+                        onClear={() => handleClearBed(occupant?.id)}
+                        onArrived={handlePatientArrived}
+                        onAcknowledge={handleAcknowledgeAlert}
+                        onMoveBed={() => setMoveBedPatient(occupant)}
+                        {...zoneFlags}
+                    />
+                );
+            };
+
+            return (
+                <div className="h-screen flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
+                    {/* Top Command Header */}
+                    <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between gap-3 shrink-0 z-20">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-teal-600 flex items-center justify-center text-white shadow-sm shadow-teal-600/20 shrink-0">
+                                <i className="ph-fill ph-heartbeat text-xl"></i>
+                            </div>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                    <h1 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight truncate">
+                                        LR Smart Board
+                                    </h1>
+                                    {isDemoMode ? (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300">
+                                            <i className="ph-fill ph-sparkle"></i> Demo
+                                        </span>
+                                    ) : (
+                                        <span className={`hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                            isSyncing
+                                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                                                : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                        }`}>
+                                            <span className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-amber-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`}></span>
+                                            {isSyncing ? 'Syncing' : 'Live'}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate hidden md:block">
+                                    O&G • Hospital Tengku Permaisuri Norashikin
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Right Controls */}
+                        <div className="flex items-center gap-2 shrink-0">
+                            {isDemoMode && !isTVMode && (
+                                <select
+                                    value={userRole}
+                                    onChange={(e) => setUserRole(e.target.value)}
+                                    className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 px-2 py-1.5 text-xs font-bold text-amber-900 dark:text-amber-200 outline-none"
+                                    title="Switch Demo Role"
+                                >
+                                    <option value="LR">View: LR</option>
+                                    <option value="7A">View: Ward 7A</option>
+                                    <option value="PAC">View: PAC</option>
+                                    <option value="Admin">View: Admin</option>
+                                </select>
+                            )}
+                            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-mono font-semibold text-slate-600 dark:text-slate-300">
+                                <i className="ph ph-clock text-teal-600 dark:text-teal-400"></i>
+                                {new Date(currentTime).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase()}
+                            </div>
+
+                            {!isLR && !isTVMode && (
+                                <button
+                                    onClick={() => setIsBookingOpen(true)}
+                                    className="bg-teal-600 hover:bg-teal-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-sm shadow-teal-600/20 transition flex items-center gap-1.5"
+                                >
+                                    <i className="ph-bold ph-plus"></i>
+                                    <span>Book Bed</span>
+                                </button>
+                            )}
+
+                            {userRole === 'Admin' && !isTVMode && (
+                                <button
+                                    onClick={() => setIsSettingsOpen(true)}
+                                    className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                                    title="Manage Passwords"
+                                >
+                                    <i className="ph-bold ph-gear text-base"></i>
+                                </button>
+                            )}
+
+                            {/* Wallboard / TV Mode Toggle */}
+                            <button
+                                onClick={() => setIsTVMode(!isTVMode)}
+                                className={`px-2.5 py-2 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 ${
+                                    isTVMode
+                                        ? 'bg-teal-600 border-teal-600 text-white'
+                                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                }`}
+                                title="Wallboard / TV Display Mode"
+                            >
+                                <i className="ph-bold ph-television text-base"></i>
+                                <span className="hidden sm:inline">{isTVMode ? 'Exit TV' : 'TV Mode'}</span>
+                            </button>
+
+                            {/* Mute Toggle */}
+                            <button
+                                onClick={() => setIsMuted(!isMuted)}
+                                className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                                title={isMuted ? 'Unmute Alerts' : 'Mute Alerts'}
+                            >
+                                <i className={`ph-bold ${isMuted ? 'ph-speaker-slash text-rose-500' : 'ph-speaker-high'} text-base`}></i>
+                            </button>
+
+                            {/* Dark Mode Toggle */}
+                            <button
+                                onClick={() => setDarkMode(!darkMode)}
+                                className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                                title="Toggle Night Shift Dark Mode"
+                            >
+                                <i className={`ph-fill ${darkMode ? 'ph-sun text-amber-400' : 'ph-moon'} text-base`}></i>
+                            </button>
+
+                            {/* Role & Logout */}
+                            <div className="hidden md:flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                                    {userRole === 'Admin' ? 'Admin' : userRole === 'LR' ? 'Labour Room' : `Ward ${userRole}`}
+                                </span>
+                                <button
+                                    onClick={() => { setUserRole(null); setIsDemoMode(false); setPatients([]); }}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                                    title="Sign Out"
+                                >
+                                    <i className="ph-bold ph-sign-out text-base"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Live Telemetry KPI Strip */}
+                    <div className="bg-slate-100/80 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 px-4 py-2 flex items-center gap-3 overflow-x-auto custom-scrollbar shrink-0">
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shrink-0">
+                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Active & Urgent</span>
+                            <span className="font-mono text-xs font-bold text-teal-700 dark:text-teal-400">{activeOcc}/{ZONE_ACTIVE_BEDS.length}</span>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shrink-0">
+                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">OT & ISO</span>
+                            <span className="font-mono text-xs font-bold text-violet-700 dark:text-violet-400">{specialtyOcc}/{ZONE_SPECIALTY_BEDS.length}</span>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shrink-0">
+                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Overflow Bay</span>
+                            <span className={`font-mono text-xs font-bold ${overflowOcc >= 3 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                                {overflowOcc}/{ZONE_OVERFLOW_BEDS.length}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shrink-0">
+                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Waiting Queue</span>
+                            <span className="font-mono text-xs font-bold text-slate-800 dark:text-white">{allWaiting.length}</span>
+                        </div>
+                        <div className={`flex items-center gap-2 px-3 py-1 rounded-lg border shrink-0 ml-auto ${
+                            alertCount > 0
+                                ? 'bg-rose-600 text-white border-rose-600 animate-pulse'
+                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400'
+                        }`}>
+                            <i className={`ph-fill ${alertCount > 0 ? 'ph-warning-circle' : 'ph-check-circle text-emerald-500'}`}></i>
+                            <span className="text-[11px] font-bold">{alertCount > 0 ? `${alertCount} Action Required` : 'All Clear'}</span>
+                        </div>
+                    </div>
+
+                    {/* Mobile / Tablet View Switcher Tabs */}
+                    <div className="lg:hidden grid grid-cols-2 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-1.5 gap-1.5 shrink-0">
+                        <button
+                            onClick={() => setMobileTab('QUEUE')}
+                            className={`py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                                mobileTab === 'QUEUE'
+                                    ? 'bg-teal-600 text-white shadow-sm'
+                                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                        >
+                            <i className="ph-bold ph-list-numbers"></i> Waiting Queue ({allWaiting.length})
+                        </button>
+                        <button
+                            onClick={() => setMobileTab('BOARD')}
+                            className={`py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                                mobileTab === 'BOARD'
+                                    ? 'bg-teal-600 text-white shadow-sm'
+                                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                        >
+                            <i className="ph-bold ph-squares-four"></i> LR Board (12)
+                        </button>
+                    </div>
+
+                    {/* Toast Notification */}
+                    {toast && (
+                        <div className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl shadow-xl text-white text-xs font-bold flex items-center gap-2.5 card-enter ${
+                            toast.type === 'warning' ? 'bg-rose-600' : 'bg-slate-900 dark:bg-teal-600'
+                        }`}>
+                            <i className={`ph-fill ${toast.type === 'warning' ? 'ph-warning-circle' : 'ph-check-circle text-emerald-400 dark:text-white'} text-lg`}></i>
+                            <span>{toast.message}</span>
+                        </div>
+                    )}
+
+                    {/* Main Split Command Workspace */}
+                    <div className="flex-1 flex overflow-hidden">
+                        {/* LEFT COLUMN: WAITING QUEUE */}
+                        <aside className={`${mobileTab === 'QUEUE' ? 'flex' : 'hidden'} lg:flex w-full lg:w-[360px] xl:w-[400px] bg-slate-100/70 dark:bg-slate-900/40 border-r border-slate-200 dark:border-slate-800 flex-col shrink-0`}>
+                            <div className="px-4 py-3 bg-white/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 space-y-2.5 shrink-0">
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                                        <i className="ph-fill ph-list-numbers text-teal-600 text-base"></i> Waiting Queue
+                                    </h2>
+                                    <span className="font-mono text-xs font-bold text-slate-500 dark:text-slate-400">
+                                        {filteredWaiting.length} shown
+                                    </span>
+                                </div>
+                                {!isTVMode && (
+                                    <div className="flex items-center gap-1.5 overflow-x-auto">
+                                        {[
+                                            { id: 'ALL', label: 'All' },
+                                            { id: 'HIGH', label: 'High Risk' },
+                                            { id: 'CALLED', label: 'Called' },
+                                            ...(!isLR ? [{ id: 'MINE', label: `My Ward (${userRole})` }] : [])
+                                        ].map(f => (
+                                            <button
+                                                key={f.id}
+                                                onClick={() => setQueueFilter(f.id)}
+                                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition shrink-0 ${
+                                                    queueFilter === f.id
+                                                        ? 'bg-teal-600 text-white'
+                                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                                }`}
+                                            >
+                                                {f.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-3.5 custom-scrollbar space-y-3">
+                                {filteredWaiting.map((patient, index) => (
+                                    <PatientCard
+                                        key={patient.id}
+                                        patient={patient}
+                                        userRole={userRole}
+                                        priorityScore={calculatePriority(patient)}
+                                        waitTime={formatDuration(patient.bookingTime, currentTime)}
+                                        queueNumber={index + 1}
+                                        isTVMode={isTVMode}
+                                        currentTime={currentTime}
+                                        onCall={() => setAssignBedPatient(patient)}
+                                        onUpdate={() => setUpdateModalPatient(patient)}
+                                        onBumpUp={() => handleNudge(patient.id, 10)}
+                                        onBumpDown={() => handleNudge(patient.id, -10)}
+                                        onCancel={() => handleCancelBooking(patient.id)}
+                                        onAcknowledge={handleAcknowledgeAlert}
+                                        onWardSend={handleWardSend}
+                                    />
+                                ))}
+                                {filteredWaiting.length === 0 && (
+                                    <div className="text-center py-12 text-slate-400 dark:text-slate-600">
+                                        <i className="ph-fill ph-check-circle text-4xl mb-2"></i>
+                                        <p className="text-xs font-semibold">No patients in this view</p>
+                                    </div>
+                                )}
+                            </div>
+                        </aside>
+
+                        {/* RIGHT WORKSPACE: 3-ZONE LABOUR ROOM COMMAND BOARD */}
+                        <main className={`${mobileTab === 'BOARD' ? 'flex' : 'hidden'} lg:flex flex-1 flex-col overflow-hidden`}>
+                            <div className="flex-1 overflow-y-auto p-4 sm:p-5 custom-scrollbar space-y-5">
+                                {/* ZONE 1: ACTIVE & URGENT DELIVERY */}
+                                <section>
+                                    <div className="flex items-center justify-between mb-2.5">
+                                        <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-teal-500"></span>
+                                            Active & Urgent Delivery Suites
+                                        </h2>
+                                        <span className="text-[11px] font-mono text-slate-400">Rooms 3, 4, 5, 6 • Urgent 13 & 2</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                                        {ZONE_ACTIVE_BEDS.map(bed => renderBedComponent(bed))}
+                                    </div>
+                                </section>
+
+                                {/* ZONE 2: SPECIALTY & ESCALATION (OT + ISO) */}
+                                <section>
+                                    <div className="flex items-center justify-between mb-2.5">
+                                        <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-violet-500"></span>
+                                            Escalation & Isolation
+                                        </h2>
+                                        <span className="text-[11px] font-mono text-slate-400">OT • Room 7 (ISO)</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                        {ZONE_SPECIALTY_BEDS.map(bed => renderBedComponent(bed, { isSpecialtyZone: true }))}
+                                    </div>
+                                </section>
+
+                                {/* ZONE 3: POST-DELIVERY OVERFLOW HOLDING BAY */}
+                                <section>
+                                    <div className="flex items-center justify-between mb-2.5">
+                                        <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                            Post-Delivery Overflow Holding Bay
+                                        </h2>
+                                        <span className="text-[11px] font-mono text-slate-400">Rooms 1A, 1B, 14A, 14B</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                                        {ZONE_OVERFLOW_BEDS.map(bed => renderBedComponent(bed, { isOverflowZone: true }))}
+                                    </div>
+                                </section>
+                            </div>
+                        </main>
+                    </div>
+
+                    {/* Slide-Over Drawers & Modals */}
+                    {isBookingOpen && <BookingDrawer userWard={userRole} onClose={() => setIsBookingOpen(false)} onSave={handleNewBooking} />}
+                    {updateModalPatient && <UpdateDrawer patient={updateModalPatient} onClose={() => setUpdateModalPatient(null)} onSave={handleStatusUpdate} />}
+                    {assignBedPatient && <AssignBedModal patient={assignBedPatient} activePatients={patients} onClose={() => setAssignBedPatient(null)} onConfirm={handleConfirmBedAssignment} />}
+                    {moveBedPatient && <AssignBedModal patient={moveBedPatient} activePatients={patients} onClose={() => setMoveBedPatient(null)} onConfirm={handleConfirmMoveBed} isMoveMode />}
+                    {deliverModalPatient && <DeliveryModal patient={deliverModalPatient} onClose={() => setDeliverModalPatient(null)} onConfirm={handleConfirmDelivery} />}
+                    {isSettingsOpen && <SettingsModal passwords={activePasswords} onClose={() => setIsSettingsOpen(false)} onSave={handleUpdatePasswords} />}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
