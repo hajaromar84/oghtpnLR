@@ -97,78 +97,6 @@
         const ZONE_SPECIALTY_BEDS = ['OT', 'Room 7 (ISO)'];
         const ZONE_OVERFLOW_BEDS = ['Room 1A (Overflow)', 'Room 1B (Overflow)', 'Room 14A (Overflow)', 'Room 14B (Overflow)'];
 
-        // Sample Data Generator for Instant Preview / Demo Mode
-        const getSamplePatients = () => {
-            const now = Date.now();
-            const minsAgo = (m) => toLocalISOString(new Date(now - m * 60000));
-            const minsFromNow = (m) => toLocalISOString(new Date(now + m * 60000));
-            return [
-                {
-                    id: 'demo-1', name: 'Nurul Huda binti Razak', ic: '940812-10-5122', location: '7A',
-                    bookingTime: minsAgo(95), bookedBy: 'SN Aisyah', notedBy: 'Dr. Amir', notedTime: minsAgo(88),
-                    gravida: 2, para: 1, poa: '39+4', issues: ['1 Prev Scar'], admissionType: 'Spontaneous',
-                    gbs: true, epidural: false,
-                    lastVE: { time: minsAgo(25), dilation: '9', cervix: 'Fully effaced', nextReviewTime: minsFromNow(35) },
-                    membrane: 'SROM', liquor: 'TMSL', romTime: minsAgo(40), ctg: 'Suspicious',
-                    status: 'WAITING', assignedBed: null, manualOverride: 0
-                },
-                {
-                    id: 'demo-2', name: 'Siti Maisarah binti Kassim', ic: '970304-08-6014', location: 'PAC',
-                    bookingTime: minsAgo(55), bookedBy: 'Dr. Farah', notedBy: null, notedTime: null,
-                    gravida: 1, para: 0, poa: '40+2', issues: ['PIH (On Tx)'], admissionType: 'IOL - Postdates (Prostin x1)',
-                    gbs: false, epidural: true,
-                    lastVE: { time: minsAgo(30), dilation: '5', cervix: '1cm soft', nextReviewTime: minsFromNow(210), alertRole: 'LR', alertMsg: 'NEW BOOKING' },
-                    membrane: 'Intact', liquor: 'N/A', romTime: null, ctg: 'Normal',
-                    status: 'WAITING', assignedBed: null, manualOverride: 0
-                },
-                {
-                    id: 'demo-3', name: 'Kavitha a/p Subramaniam', ic: '921120-14-5890', location: '7B',
-                    bookingTime: minsAgo(140), bookedBy: 'SN Mei Ling', notedBy: 'Dr. Amir', notedTime: minsAgo(130),
-                    gravida: 3, para: 2, poa: '38+6', issues: [], admissionType: 'Spontaneous',
-                    gbs: false, epidural: false,
-                    lastVE: { time: minsAgo(15), dilation: '7', cervix: 'Effaced', nextReviewTime: minsFromNow(105) },
-                    membrane: 'SROM', liquor: 'Clear', romTime: minsAgo(60), ctg: 'Normal',
-                    status: 'CALLED', calledToBed: 'Room 13 (Urg)', callTime: minsAgo(8), manualOverride: 0
-                },
-                {
-                    id: 'demo-4', name: 'Aina Sofea binti Zulkifli', ic: '960518-10-5318', location: '7A',
-                    bookingTime: minsAgo(320), bookedBy: 'SN Aisyah', notedBy: 'Dr. Hajar', notedTime: minsAgo(310),
-                    gravida: 1, para: 0, poa: '39+1', issues: ['Obesity BMI 36.2'], admissionType: 'IOL - GDM (Foley)',
-                    gbs: true, epidural: true,
-                    lastVE: { time: minsAgo(255), dilation: '6', cervix: 'Effaced', nextReviewTime: minsAgo(15), reviewAcked: false },
-                    membrane: 'ARM', liquor: 'Clear', romTime: minsAgo(255), ctg: 'Normal',
-                    status: 'IN_LR', assignedBed: 'Room 3', admissionTime: minsAgo(270), manualOverride: 0
-                },
-                {
-                    id: 'demo-5', name: 'Wong Mei Yan', ic: '910903-14-6210', location: 'PAC',
-                    bookingTime: minsAgo(210), bookedBy: 'Dr. Lim', notedBy: 'Dr. Hajar', notedTime: minsAgo(205),
-                    gravida: 2, para: 1, poa: '38+4', issues: ['LGA'], admissionType: 'Spontaneous',
-                    gbs: false, epidural: false,
-                    lastVE: { time: minsAgo(90), dilation: '8', cervix: 'Thin', nextReviewTime: minsFromNow(30) },
-                    membrane: 'SROM', liquor: 'MMSL', romTime: minsAgo(110), ctg: 'Normal',
-                    status: 'IN_LR', assignedBed: 'Room 4', admissionTime: minsAgo(160), manualOverride: 0
-                },
-                {
-                    id: 'demo-6', name: 'Farhana binti Osman', ic: '930219-06-5104', location: '7B',
-                    bookingTime: minsAgo(400), bookedBy: 'SN Nadia', notedBy: 'Dr. Amir', notedTime: minsAgo(390),
-                    gravida: 4, para: 3, poa: '39+0', issues: ['PE (On Tx)'], admissionType: 'IOL - PE (Prostin x1)',
-                    gbs: false, epidural: false,
-                    lastVE: { time: minsAgo(180), dilation: '10', cervix: 'Fully', nextReviewTime: null },
-                    membrane: 'ARM', liquor: 'Clear', romTime: minsAgo(200), ctg: 'Normal',
-                    status: 'DELIVERED', assignedBed: 'Room 1A (Overflow)', admissionTime: minsAgo(350), deliveryTime: minsAgo(45), manualOverride: 0
-                },
-                {
-                    id: 'demo-7', name: 'Priya a/p Ramesh', ic: '980711-10-5842', location: 'PAC',
-                    bookingTime: minsAgo(310), bookedBy: 'Dr. Farah', notedBy: 'Dr. Hajar', notedTime: minsAgo(300),
-                    gravida: 1, para: 0, poa: '40+0', issues: [], admissionType: 'Spontaneous',
-                    gbs: false, epidural: true,
-                    lastVE: { time: minsAgo(120), dilation: '10', cervix: 'Fully', nextReviewTime: null },
-                    membrane: 'SROM', liquor: 'Clear', romTime: minsAgo(150), ctg: 'Normal',
-                    status: 'DELIVERED', assignedBed: 'Room 1B (Overflow)', admissionTime: minsAgo(260), deliveryTime: minsAgo(20), manualOverride: 0
-                }
-            ];
-        };
-
         // =========================================================================
         // AUDIO ENGINE (With Mute Control)
         // =========================================================================
@@ -1648,7 +1576,7 @@
         // =========================================================================
         // MODERN MEDICAL LOGIN SCREEN
         // =========================================================================
-        const LoginScreen = ({ onLogin, onStartDemo, passwords, darkMode, setDarkMode }) => {
+        const LoginScreen = ({ onLogin, passwords, darkMode, setDarkMode }) => {
             const [errorMsg, setErrorMsg] = React.useState('');
 
             const handleLogin = (e) => {
@@ -1715,24 +1643,6 @@
                                     Sign In to Live Board
                                 </button>
                             </form>
-
-                            <div className="relative my-5">
-                                <div className="absolute inset-0 flex items-center">
-                                    <div className="w-full border-t border-slate-200 dark:border-slate-800"></div>
-                                </div>
-                                <div className="relative flex justify-center text-[11px] uppercase font-bold tracking-wider">
-                                    <span className="bg-white dark:bg-slate-900 px-3 text-slate-400">Or Explore UI</span>
-                                </div>
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={onStartDemo}
-                                className="w-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 transition text-xs flex items-center justify-center gap-2"
-                            >
-                                <i className="ph-fill ph-sparkle text-teal-600 dark:text-teal-400 text-base"></i>
-                                Preview Redesign with Sample Data (Demo Mode)
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -1744,7 +1654,6 @@
         // =========================================================================
         const App = () => {
             const [userRole, setUserRole] = React.useState(null);
-            const [isDemoMode, setIsDemoMode] = React.useState(false);
             const [patients, setPatients] = React.useState([]);
             const [passwords, setPasswords] = React.useState(null);
 
@@ -1766,11 +1675,6 @@
             const [currentTime, setCurrentTime] = React.useState(Date.now());
             const prevPatientsRef = React.useRef([]);
             const isSyncingRef = React.useRef(false);
-            const isDemoRef = React.useRef(false);
-
-            React.useEffect(() => {
-                isDemoRef.current = isDemoMode;
-            }, [isDemoMode]);
 
             // Sync Dark Mode Class on <html>
             React.useEffect(() => {
@@ -1779,7 +1683,7 @@
 
             // Fetch Live Data
             const fetchPatients = async () => {
-                if (isSyncingRef.current || isDemoRef.current) return;
+                if (isSyncingRef.current) return;
                 try {
                     const response = await fetch(API_URL);
                     const textData = await response.text();
@@ -1796,7 +1700,6 @@
             };
 
             const syncToDB = (action, payload) => {
-                if (isDemoRef.current) return;
                 setIsSyncing(true);
                 isSyncingRef.current = true;
                 fetch(API_URL, {
@@ -1818,11 +1721,11 @@
             }, []);
 
             React.useEffect(() => {
-                if (userRole && !isDemoMode) {
+                if (userRole) {
                     const pollInterval = setInterval(fetchPatients, 5000);
                     return () => clearInterval(pollInterval);
                 }
-            }, [userRole, isDemoMode]);
+            }, [userRole]);
 
             // Sound Alert Listener
             React.useEffect(() => {
@@ -2019,16 +1922,9 @@
                         darkMode={darkMode}
                         setDarkMode={setDarkMode}
                         onLogin={(role) => {
-                            setIsDemoMode(false);
                             setUserRole(role);
                             getAudioCtx();
                             fetchPatients();
-                        }}
-                        onStartDemo={() => {
-                            setIsDemoMode(true);
-                            setPatients(getSamplePatients());
-                            setUserRole('LR');
-                            getAudioCtx();
                         }}
                     />
                 );
@@ -2110,20 +2006,14 @@
                                     <h1 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight truncate">
                                         LR Smart Board
                                     </h1>
-                                    {isDemoMode ? (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300">
-                                            <i className="ph-fill ph-sparkle"></i> Demo
-                                        </span>
-                                    ) : (
-                                        <span className={`hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                                            isSyncing
-                                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-                                                : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                                        }`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-amber-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`}></span>
-                                            {isSyncing ? 'Syncing' : 'Live'}
-                                        </span>
-                                    )}
+                                    <span className={`hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                        isSyncing
+                                            ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                                            : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                    }`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-amber-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`}></span>
+                                        {isSyncing ? 'Syncing' : 'Live'}
+                                    </span>
                                 </div>
                                 <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate hidden md:block">
                                     O&G • Hospital Tengku Permaisuri Norashikin
@@ -2133,19 +2023,6 @@
 
                         {/* Right Controls */}
                         <div className="flex items-center gap-2 shrink-0">
-                            {isDemoMode && !isTVMode && (
-                                <select
-                                    value={userRole}
-                                    onChange={(e) => setUserRole(e.target.value)}
-                                    className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 px-2 py-1.5 text-xs font-bold text-amber-900 dark:text-amber-200 outline-none"
-                                    title="Switch Demo Role"
-                                >
-                                    <option value="LR">View: LR</option>
-                                    <option value="7A">View: Ward 7A</option>
-                                    <option value="PAC">View: PAC</option>
-                                    <option value="Admin">View: Admin</option>
-                                </select>
-                            )}
                             <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-mono font-semibold text-slate-600 dark:text-slate-300">
                                 <i className="ph ph-clock text-teal-600 dark:text-teal-400"></i>
                                 {new Date(currentTime).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase()}
@@ -2209,7 +2086,7 @@
                                     {userRole === 'Admin' ? 'Admin' : userRole === 'LR' ? 'Labour Room' : `Ward ${userRole}`}
                                 </span>
                                 <button
-                                    onClick={() => { setUserRole(null); setIsDemoMode(false); setPatients([]); }}
+                                    onClick={() => { setUserRole(null); setPatients([]); }}
                                     className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
                                     title="Sign Out"
                                 >
