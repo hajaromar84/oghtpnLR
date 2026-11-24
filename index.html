@@ -58,6 +58,45 @@
         .animate-pulse-soft {
             animation: pulseSoft 1.8s ease-in-out infinite;
         }
+        @keyframes flashAlertRed {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.75);
+                border-color: #e11d48;
+            }
+            50% {
+                box-shadow: 0 0 0 8px rgba(225, 29, 72, 0.2);
+                border-color: #fda4af;
+            }
+        }
+        @keyframes flashAlertAmber {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.75);
+                border-color: #f59e0b;
+            }
+            50% {
+                box-shadow: 0 0 0 8px rgba(245, 158, 11, 0.2);
+                border-color: #fcd34d;
+            }
+        }
+        @keyframes flashAlertSky {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.75);
+                border-color: #0284c7;
+            }
+            50% {
+                box-shadow: 0 0 0 8px rgba(2, 132, 199, 0.2);
+                border-color: #7dd3fc;
+            }
+        }
+        .animate-flash-critical {
+            animation: flashAlertRed 0.75s ease-in-out infinite;
+        }
+        .animate-flash-new {
+            animation: flashAlertAmber 0.85s ease-in-out infinite;
+        }
+        .animate-flash-called {
+            animation: flashAlertSky 0.8s ease-in-out infinite;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200">
@@ -157,57 +196,48 @@
             }
         };
 
+        // Loud, hospital-grade multi-chime audio alert engine
         const playAlertSound = (type, isMuted = false) => {
             if (isMuted) return;
             const ctx = getAudioCtx();
             if (!ctx) return;
             try {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.connect(gain);
-                gain.connect(ctx.destination);
                 const now = ctx.currentTime;
+                const playTone = (wave, freq, startOffset, duration, volume = 0.35) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = wave;
+                    osc.frequency.setValueAtTime(freq, now + startOffset);
+                    gain.gain.setValueAtTime(0.001, now + startOffset);
+                    gain.gain.linearRampToValueAtTime(volume, now + startOffset + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + startOffset + duration);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + startOffset);
+                    osc.stop(now + startOffset + duration + 0.02);
+                };
 
-                if (type === 'critical') {
-                    osc.type = 'square';
-                    osc.frequency.setValueAtTime(880, now);
-                    osc.frequency.setValueAtTime(1180, now + 0.12);
-                    gain.gain.setValueAtTime(0.08, now);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-                    osc.start(now);
-                    osc.stop(now + 0.35);
-                } else if (type === 'emergency') {
-                    osc.type = 'sawtooth';
-                    osc.frequency.setValueAtTime(620, now);
-                    osc.frequency.setValueAtTime(840, now + 0.18);
-                    osc.frequency.setValueAtTime(620, now + 0.36);
-                    gain.gain.setValueAtTime(0.09, now);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-                    osc.start(now);
-                    osc.stop(now + 0.55);
+                if (type === 'critical' || type === 'emergency') {
+                    // Urgent 3-burst repeating high-priority alarm (~1.6s)
+                    [0, 0.52, 1.04].forEach(offset => {
+                        playTone('sawtooth', 980, offset, 0.16, 0.38);
+                        playTone('square', 1320, offset + 0.17, 0.22, 0.38);
+                    });
                 } else if (type === 'new_booking') {
-                    osc.type = 'sine';
-                    osc.frequency.setValueAtTime(523.25, now);
-                    osc.frequency.setValueAtTime(783.99, now + 0.18);
-                    gain.gain.setValueAtTime(0.12, now);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-                    osc.start(now);
-                    osc.stop(now + 0.55);
+                    // Loud, clear 3-note ascending chime played twice (~1.4s)
+                    [0, 0.7].forEach(offset => {
+                        playTone('triangle', 587.33, offset, 0.18, 0.36);
+                        playTone('triangle', 783.99, offset + 0.16, 0.18, 0.36);
+                        playTone('sine', 1046.5, offset + 0.32, 0.3, 0.4);
+                    });
                 } else if (type === 'called') {
-                    osc.type = 'sine';
-                    osc.frequency.setValueAtTime(587.33, now);
-                    osc.frequency.setValueAtTime(880, now + 0.16);
-                    gain.gain.setValueAtTime(0.1, now);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-                    osc.start(now);
-                    osc.stop(now + 0.5);
+                    // Loud 2-tone ward paging chime played twice (~1.3s)
+                    [0, 0.62].forEach(offset => {
+                        playTone('sine', 659.25, offset, 0.22, 0.38);
+                        playTone('sine', 880, offset + 0.22, 0.32, 0.42);
+                    });
                 } else {
-                    osc.type = 'triangle';
-                    osc.frequency.setValueAtTime(660, now);
-                    gain.gain.setValueAtTime(0.05, now);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-                    osc.start(now);
-                    osc.stop(now + 0.18);
+                    playTone('triangle', 740, 0, 0.18, 0.22);
                 }
             } catch (e) {}
         };
@@ -564,7 +594,7 @@
         // WAITING QUEUE PATIENT CARD
         // =========================================================================
         const PatientCard = ({
-            patient, canManageLR, userRole, priorityScore, waitTime, queueNumber,
+            patient, canManageLR, userRole, priorityScore, waitTime, queueNumber, flashType,
             onCall, onUpdate, onBumpUp, onBumpDown, onCancel, onNoteBooking, onWardSend
         }) => {
             const [noteName, setNoteName] = React.useState('');
@@ -572,7 +602,7 @@
 
             const isHigh = priorityScore >= 50 || patient.ctg === 'Pathological';
             const isMed = !isHigh && (priorityScore >= 20 || patient.ctg === 'Suspicious');
-            const barColor = isHigh ? 'bg-rose-500' : isMed ? 'bg-amber-500' : 'bg-teal-500';
+            const barColor = isHigh ? 'bg-rose-600' : isMed ? 'bg-amber-500' : 'bg-teal-500';
             const dil = Number(patient.lastVE?.dilation ?? 0);
             const dilBadgeClass = dil >= 9
                 ? 'bg-rose-600 text-white'
@@ -587,20 +617,39 @@
             const issuesArr = Array.isArray(patient.issues) ? patient.issues : [];
             const canWardEdit = !canManageLR || userRole === 'Admin';
 
+            const cardToneClass = isHigh
+                ? 'bg-rose-50/95 dark:bg-rose-950/45 border-rose-400 dark:border-rose-700'
+                : !patient.notedBy
+                    ? 'bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-700'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800';
+
+            const flashClass = flashType === 'critical'
+                ? 'animate-flash-critical border-2'
+                : flashType === 'new_booking'
+                    ? 'animate-flash-new border-2'
+                    : flashType === 'called'
+                        ? 'animate-flash-called border-2'
+                        : '';
+
             return (
-                <div className={`relative rounded-2xl bg-white dark:bg-slate-900 border shadow-sm overflow-hidden transition ${!patient.notedBy ? 'border-amber-300 dark:border-amber-700' : 'border-slate-200 dark:border-slate-800'}`}>
-                    <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${barColor}`}></div>
+                <div className={`relative rounded-2xl border shadow-sm overflow-hidden transition ${cardToneClass} ${flashClass}`}>
+                    <div className={`absolute left-0 top-0 bottom-0 ${isHigh ? 'w-2' : 'w-1.5'} ${barColor}`}></div>
                     <div className="pl-4 pr-3.5 py-3 space-y-2.5">
                         {/* Header Row */}
                         <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="w-5 h-5 rounded-md bg-slate-900 dark:bg-slate-700 text-white font-mono text-[11px] font-bold flex items-center justify-center shrink-0">
+                                    <span className={`w-5 h-5 rounded-md font-mono text-[11px] font-bold flex items-center justify-center shrink-0 ${isHigh ? 'bg-rose-600 text-white' : 'bg-slate-900 dark:bg-slate-700 text-white'}`}>
                                         {queueNumber}
                                     </span>
-                                    <h3 className="font-extrabold text-sm text-slate-900 dark:text-white truncate">
+                                    <h3 className={`font-extrabold text-sm truncate ${isHigh ? 'text-rose-950 dark:text-rose-100' : 'text-slate-900 dark:text-white'}`}>
                                         {patient.name}
                                     </h3>
+                                    {isHigh && (
+                                        <span className={`px-1.5 py-0.5 rounded bg-rose-600 text-white text-[9px] font-extrabold uppercase tracking-wide flex items-center gap-0.5 ${patient.ctg === 'Pathological' ? 'animate-pulse' : ''}`}>
+                                            <i className="ph-fill ph-warning"></i> High Risk
+                                        </span>
+                                    )}
                                     {Number(patient.manualOverride) !== 0 && (
                                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold font-mono ${Number(patient.manualOverride) > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-600'}`}>
                                             MO {Number(patient.manualOverride) > 0 ? `+${patient.manualOverride}` : patient.manualOverride}
@@ -2208,6 +2257,8 @@
             const [isMuted, setIsMuted] = React.useState(false);
             const [currentTime, setCurrentTime] = React.useState(Date.now());
             const [toast, setToast] = React.useState(null);
+            const [alertBanner, setAlertBanner] = React.useState(null); // { title, subtitle, type: 'critical' | 'new_booking' | 'called' }
+            const [flashingIds, setFlashingIds] = React.useState({}); // { [patientId]: 'critical' | 'new_booking' | 'called' }
 
             // Modals & Drawers
             const [isBookingOpen, setIsBookingOpen] = React.useState(false);
@@ -2217,8 +2268,22 @@
             const [isDirectDeliveryOpen, setIsDirectDeliveryOpen] = React.useState(false);
             const [isPasswordModalOpen, setIsPasswordModalOpen] = React.useState(false);
 
-            // Traffic cop ref to pause polling right after local edits
+            // Traffic cop & cross-device alert refs
             const pauseSyncUntilRef = React.useRef(0);
+            const prevPatientsMapRef = React.useRef(null);
+            const bannerTimerRef = React.useRef(null);
+            const isMutedRef = React.useRef(isMuted);
+            const userRoleRef = React.useRef(userRole);
+
+            React.useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+            React.useEffect(() => { userRoleRef.current = userRole; }, [userRole]);
+
+            // Unlock Web Audio on first user interaction so cross-device chimes always ring
+            React.useEffect(() => {
+                const unlock = () => { getAudioCtx(); };
+                window.addEventListener('pointerdown', unlock, { passive: true });
+                return () => window.removeEventListener('pointerdown', unlock);
+            }, []);
 
             React.useEffect(() => {
                 document.documentElement.classList.toggle('dark', darkMode);
@@ -2234,16 +2299,95 @@
                 setTimeout(() => setToast(null), 3500);
             };
 
+            // Triggers loud chime + 15-second blinking banner + blinking patient card
+            const triggerAlert = React.useCallback((type, title, subtitle, patientId = null) => {
+                playAlertSound(type, isMutedRef.current);
+                setAlertBanner({ type, title, subtitle });
+                if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+                bannerTimerRef.current = setTimeout(() => setAlertBanner(null), 15000);
+
+                if (patientId) {
+                    setFlashingIds(prev => ({ ...prev, [patientId]: type }));
+                    setTimeout(() => {
+                        setFlashingIds(prev => {
+                            const next = { ...prev };
+                            delete next[patientId];
+                            return next;
+                        });
+                    }, 15000);
+                }
+            }, []);
+
             const fetchBoardData = React.useCallback(async () => {
                 if (!API_URL || Date.now() < pauseSyncUntilRef.current) return;
                 try {
                     setIsSyncing(true);
                     const res = await fetch(API_URL);
                     const data = await res.json();
-                    if (Array.isArray(data)) {
-                        setPatients(data);
-                    } else {
-                        if (Array.isArray(data.patients)) setPatients(data.patients);
+                    const incomingPatients = Array.isArray(data)
+                        ? data
+                        : (Array.isArray(data.patients) ? data.patients : null);
+
+                    if (incomingPatients) {
+                        const role = userRoleRef.current;
+                        const isLRRole = role === 'LR' || role === 'Admin';
+
+                        // Cross-device alert detection (runs after initial baseline load)
+                        if (role && prevPatientsMapRef.current) {
+                            const prevMap = prevPatientsMapRef.current;
+                            incomingPatients.forEach(p => {
+                                const oldP = prevMap.get(p.id);
+                                if (isLRRole) {
+                                    // 1. Brand-new booking arrived from a Ward
+                                    if (!oldP && p.status === 'WAITING') {
+                                        const highRisk = calculatePriority(p) >= 50 || p.ctg === 'Pathological';
+                                        triggerAlert(
+                                            highRisk ? 'critical' : 'new_booking',
+                                            highRisk ? `HIGH RISK BOOKING — ${p.name}` : `NEW LR BOOKING — ${p.name}`,
+                                            `From ${p.location} • ${p.lastVE?.dilation ?? 0}cm • CTG: ${p.ctg}`,
+                                            p.id
+                                        );
+                                    }
+                                    // 2. Existing waiting patient escalated in risk
+                                    else if (oldP && p.status === 'WAITING') {
+                                        const oldScore = calculatePriority({ ...oldP, manualOverride: 0 });
+                                        const newScore = calculatePriority({ ...p, manualOverride: 0 });
+                                        if (newScore > oldScore + 15 || (oldP.ctg !== 'Pathological' && p.ctg === 'Pathological')) {
+                                            triggerAlert(
+                                                'critical',
+                                                `CLINICAL ESCALATION — ${p.name}`,
+                                                `${p.location} • CTG: ${p.ctg} • ${p.lastVE?.dilation ?? 0}cm`,
+                                                p.id
+                                            );
+                                        }
+                                    }
+                                    // 3. Ward confirmed patient is en route to LR
+                                    else if (oldP && oldP.status === 'CALLED' && p.status === 'EN_ROUTE') {
+                                        playAlertSound('update', isMutedRef.current);
+                                        showToast(`${p.name} is EN ROUTE to ${p.calledToBed} (sent by ${p.wardNotedBy}).`, 'info');
+                                    }
+                                } else {
+                                    // Ward view: alert loudly when LR calls a patient from this ward
+                                    if (p.location === role && p.status === 'CALLED' && (!oldP || oldP.status !== 'CALLED')) {
+                                        triggerAlert(
+                                            'called',
+                                            `PATIENT CALLED TO ${p.calledToBed} — ${p.name}`,
+                                            `Please prepare and confirm transfer to Labour Room`,
+                                            p.id
+                                        );
+                                    }
+                                }
+                            });
+                        }
+
+                        // Update baseline map
+                        const nextMap = new Map();
+                        incomingPatients.forEach(p => nextMap.set(p.id, p));
+                        prevPatientsMapRef.current = nextMap;
+                        setPatients(incomingPatients);
+                    }
+
+                    if (!Array.isArray(data)) {
                         if (data.passwords) setPasswords(prev => ({ ...prev, ...data.passwords }));
                         if (Array.isArray(data.censusDeliveries)) setCensusDeliveries(data.censusDeliveries);
                         if (Array.isArray(data.learnedIndications) && data.learnedIndications.length > 0) {
@@ -2264,20 +2408,19 @@
                 } finally {
                     setIsSyncing(false);
                 }
-            }, []);
+            }, [triggerAlert]);
 
+            // Initial fetch & 10-second background sync polling
             React.useEffect(() => {
                 fetchBoardData();
+                const poll = setInterval(fetchBoardData, 10000);
+                return () => clearInterval(poll);
             }, [fetchBoardData]);
 
-            React.useEffect(() => {
-                if (!userRole) return;
-                const interval = setInterval(fetchBoardData, 10000);
-                return () => clearInterval(interval);
-            }, [userRole, fetchBoardData]);
-
             const syncToDB = (action, payload) => {
-                pauseSyncUntilRef.current = Date.now() + 5000;
+                if (!API_URL) return;
+                // Pause background GET polling briefly so optimistic local state isn't overwritten
+                pauseSyncUntilRef.current = Date.now() + 4500;
                 fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -2285,49 +2428,62 @@
                 }).catch(err => console.error('Sync POST failed:', err));
             };
 
-            // Self-learning LSCS indications (Built-in + Google Sheet history + Local newly typed)
-            const learnIndication = (rawIndication) => {
-                const clean = String(rawIndication || '').trim();
+            const upsertPatient = (updated) => {
+                setPatients(prev => {
+                    const next = prev.map(p => p.id === updated.id ? updated : p);
+                    const map = new Map();
+                    next.forEach(p => map.set(p.id, p));
+                    prevPatientsMapRef.current = map;
+                    return next;
+                });
+                syncToDB('UPDATE', { patient: updated });
+            };
+
+            const learnIndication = (indication) => {
+                const clean = String(indication || '').trim();
                 if (!clean) return;
                 setCustomIndications(prev => {
-                    const exists = [...LSCS_INDICATIONS, ...prev].some(i => i.toLowerCase() === clean.toLowerCase());
-                    if (exists) return prev;
-                    const next = [...prev, clean];
-                    try { localStorage.setItem('lr_custom_lscs_indications', JSON.stringify(next)); } catch (e) {}
-                    return next;
+                    if (prev.some(i => i.toLowerCase() === clean.toLowerCase())) return prev;
+                    const merged = [clean, ...prev];
+                    try { localStorage.setItem('lr_custom_lscs_indications', JSON.stringify(merged)); } catch (e) {}
+                    return merged;
                 });
             };
 
             const allLSCSIndications = React.useMemo(() => {
                 const map = new Map();
-                const fromCensus = censusDeliveries.map(d => d.lscsIndication).filter(Boolean);
-                [...LSCS_INDICATIONS, ...customIndications, ...fromCensus].forEach(ind => {
+                [...LSCS_INDICATIONS, ...customIndications].forEach(ind => {
                     const clean = String(ind || '').trim();
-                    if (clean && !map.has(clean.toLowerCase())) {
-                        map.set(clean.toLowerCase(), clean);
-                    }
+                    if (clean && !map.has(clean.toLowerCase())) map.set(clean.toLowerCase(), clean);
                 });
                 return Array.from(map.values());
-            }, [customIndications, censusDeliveries]);
+            }, [customIndications]);
 
-            // Patient Mutations
-            const upsertPatient = (updated) => {
-                setPatients(prev => prev.map(p => p.id === updated.id ? updated : p));
-                if (updated.deliveryTime) {
-                    setCensusDeliveries(prev => {
-                        const exists = prev.some(d => d.id === updated.id);
-                        return exists ? prev.map(d => d.id === updated.id ? updated : d) : [updated, ...prev];
-                    });
-                }
-                syncToDB('UPDATE', { patient: updated });
+            const handleWardSend = (id, staffName) => {
+                const target = patients.find(p => p.id === id);
+                if (!target) return;
+                upsertPatient({ ...target, status: 'EN_ROUTE', wardSendTime: Date.now(), wardNotedBy: staffName });
+                playAlertSound('update', isMuted);
+                showToast(`Transfer confirmed by ${staffName}. Patient en route to LR.`);
             };
 
             const handleNewBooking = (newPatient) => {
-                setPatients(prev => [...prev, newPatient]);
+                setPatients(prev => {
+                    const next = [...prev, newPatient];
+                    const map = new Map();
+                    next.forEach(p => map.set(p.id, p));
+                    prevPatientsMapRef.current = map;
+                    return next;
+                });
                 syncToDB('ADD', { patient: newPatient });
                 setIsBookingOpen(false);
-                playAlertSound('new_booking', isMuted);
-                showToast(`Booked ${newPatient.name} into Waiting Queue.`);
+                const highRisk = calculatePriority(newPatient) >= 50 || newPatient.ctg === 'Pathological';
+                triggerAlert(
+                    highRisk ? 'critical' : 'new_booking',
+                    highRisk ? `HIGH RISK BOOKING — ${newPatient.name}` : `NEW BOOKING — ${newPatient.name}`,
+                    `From ${newPatient.location} • ${newPatient.lastVE?.dilation ?? 0}cm • CTG: ${newPatient.ctg}`,
+                    newPatient.id
+                );
             };
 
             const handleStatusUpdate = (updatedFields) => {
@@ -2338,9 +2494,13 @@
                 const newScore = calculatePriority(updated);
                 upsertPatient(updated);
                 setUpdateModalPatient(null);
-                if (updated.status === 'WAITING' && newScore > oldScore + 15) {
-                    playAlertSound('critical', isMuted);
-                    showToast(`URGENT: ${updated.name} escalated in queue!`, 'warning');
+                if (updated.status === 'WAITING' && (newScore > oldScore + 15 || (target.ctg !== 'Pathological' && updated.ctg === 'Pathological'))) {
+                    triggerAlert(
+                        'critical',
+                        `URGENT ESCALATION — ${updated.name}`,
+                        `${updated.location} • CTG: ${updated.ctg} • ${updated.lastVE?.dilation ?? 0}cm`,
+                        updated.id
+                    );
                 } else {
                     playAlertSound('update', isMuted);
                     showToast('Clinical VE / CTG updated.');
@@ -2355,18 +2515,9 @@
                     showToast(`Moved ${patient.name} to ${bed}.`);
                 } else {
                     upsertPatient({ ...patient, status: 'CALLED', calledToBed: bed, callTime: Date.now() });
-                    playAlertSound('called', isMuted);
-                    showToast(`${patient.name} called to ${bed}.`);
+                    triggerAlert('called', `CALLED TO ${bed} — ${patient.name}`, `Ward ${patient.location} notified for transfer.`, patient.id);
                 }
                 setAssignBedState(null);
-            };
-
-            const handleWardSend = (id, staffName) => {
-                const target = patients.find(p => p.id === id);
-                if (!target) return;
-                upsertPatient({ ...target, status: 'EN_ROUTE', wardSendTime: Date.now(), wardNotedBy: staffName });
-                playAlertSound('update', isMuted);
-                showToast(`${target.name} marked En Route to LR.`);
             };
 
             const handleArrived = (id) => {
@@ -2381,8 +2532,7 @@
                 const target = patients.find(p => p.id === id);
                 if (!target) return;
                 upsertPatient({ ...target, status: 'IN_LR', assignedBed: 'OT' });
-                playAlertSound('emergency', isMuted);
-                showToast(`URGENT: ${target.name} moved to OT.`, 'warning');
+                triggerAlert('emergency', `EMERGENCY TO OT — ${target.name}`, `Transferred to Operating Theatre immediately.`);
             };
 
             const handleConfirmDelivery = (deliveryData) => {
@@ -2554,7 +2704,7 @@
                                 className={`rounded-lg px-3 py-1.5 text-xs font-bold transition flex items-center gap-1.5 ${activeView === 'BOARD' ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
                             >
                                 <i className="ph-fill ph-squares-four"></i>
-                                <span className="hidden sm:inline">Board</span>
+                                <span>Live Board</span>
                             </button>
                             <button
                                 onClick={() => setActiveView('CENSUS')}
@@ -2596,11 +2746,15 @@
                             </button>
 
                             <button
-                                onClick={() => setIsMuted(!isMuted)}
+                                onClick={() => {
+                                    const nextMuted = !isMuted;
+                                    setIsMuted(nextMuted);
+                                    if (!nextMuted) playAlertSound('new_booking', false);
+                                }}
                                 className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
-                                title={isMuted ? 'Unmute Chimes' : 'Mute Chimes'}
+                                title={isMuted ? 'Unmute & Test Chime' : 'Mute Chimes'}
                             >
-                                <i className={`ph-fill ${isMuted ? 'ph-speaker-slash text-rose-500' : 'ph-speaker-high'}`}></i>
+                                <i className={`ph-fill ${isMuted ? 'ph-speaker-slash text-rose-500' : 'ph-speaker-high text-teal-600 dark:text-teal-400'}`}></i>
                             </button>
 
                             <button
@@ -2629,7 +2783,32 @@
                         </div>
                     )}
 
-                    {/* MAIN VIEW: BOARD vs 24H CENSUS */}
+                    {/* BLINKING CLINICAL ALERT BANNER (15s auto-clear or manual dismiss) */}
+                    {alertBanner && (
+                        <div className={`px-4 py-2.5 flex items-center justify-between gap-3 text-white shrink-0 z-30 border-b-2 ${
+                            alertBanner.type === 'critical' || alertBanner.type === 'emergency'
+                                ? 'bg-rose-600 border-rose-300 animate-pulse'
+                                : alertBanner.type === 'called'
+                                    ? 'bg-sky-600 border-sky-300 animate-pulse'
+                                    : 'bg-amber-500 border-amber-200 animate-pulse'
+                        }`}>
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <i className="ph-fill ph-bell-ringing text-xl shrink-0 animate-bounce"></i>
+                                <div className="min-w-0">
+                                    <p className="text-xs sm:text-sm font-extrabold tracking-wide truncate">{alertBanner.title}</p>
+                                    <p className="text-[11px] font-medium opacity-95 truncate">{alertBanner.subtitle}</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setAlertBanner(null)}
+                                className="rounded-xl bg-black/20 hover:bg-black/35 px-3 py-1.5 text-[11px] font-bold whitespace-nowrap transition"
+                            >
+                                Dismiss
+                            </button>
+                        </div>
+                    )}
+
+                    {/* MAIN CONTENT: 24H CENSUS OR LIVE COMMAND CENTER */}
                     {activeView === 'CENSUS' ? (
                         <CensusView
                             censusDeliveries={censusDeliveries}
@@ -2639,26 +2818,26 @@
                             onEditDelivery={(item) => setDeliverModalPatient(item)}
                             onCopySummary={(text) => {
                                 const ok = copyTextToClipboard(text);
-                                showToast(ok ? 'WhatsApp 24h summary copied to clipboard!' : 'Copy failed — please try again.', ok ? 'success' : 'warning');
+                                showToast(ok ? 'WhatsApp passover summary copied!' : 'Could not copy automatically.', ok ? 'success' : 'warning');
                             }}
                         />
                     ) : (
                         <>
-                            {/* KPI TELEMETRY STRIP */}
-                            <div className="bg-white/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 px-4 py-2 flex items-center justify-between gap-4 overflow-x-auto shrink-0 text-xs">
+                            {/* LIVE TELEMETRY KPI BAR */}
+                            <div className="bg-white/90 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 px-4 py-2 flex items-center justify-between gap-4 text-xs shrink-0 overflow-x-auto">
                                 <div className="flex items-center gap-4 whitespace-nowrap">
-                                    <span className="font-semibold text-slate-600 dark:text-slate-300">
-                                        Active &amp; Urgent: <strong className="font-mono text-slate-900 dark:text-white">{activeOccCount}/{ZONE_ACTIVE_URGENT.length}</strong>
+                                    <span className="font-bold text-slate-600 dark:text-slate-300">
+                                        Active Beds: <strong className="font-mono text-teal-600 dark:text-teal-400">{activeOccCount}/{ZONE_ACTIVE_URGENT.length}</strong>
                                     </span>
-                                    <span className="font-semibold text-slate-600 dark:text-slate-300">
-                                        Overflow: <strong className="font-mono text-slate-900 dark:text-white">{overflowOccCount}/{ZONE_OVERFLOW.length}</strong>
+                                    <span className="font-bold text-slate-600 dark:text-slate-300">
+                                        Overflow: <strong className="font-mono text-indigo-600 dark:text-indigo-400">{overflowOccCount}/{ZONE_OVERFLOW.length}</strong>
                                     </span>
-                                    <span className="font-semibold text-slate-600 dark:text-slate-300">
+                                    <span className="font-bold text-slate-600 dark:text-slate-300">
                                         Waiting: <strong className="font-mono text-amber-600 dark:text-amber-400">{waitingAll.length}</strong>
                                     </span>
                                     {overdueCount > 0 && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-bold">
-                                            <i className="ph-fill ph-warning-circle"></i> {overdueCount} Overdue Review
+                                        <span className="px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 font-extrabold animate-pulse">
+                                            {overdueCount} VE Overdue
                                         </span>
                                     )}
                                 </div>
@@ -2730,6 +2909,7 @@
                                                     priorityScore={calculatePriority(p)}
                                                     waitTime={formatDuration(p.bookingTime, currentTime)}
                                                     queueNumber={idx + 1}
+                                                    flashType={flashingIds[p.id] || null}
                                                     onCall={() => setAssignBedState({ patient: p, isMove: false })}
                                                     onUpdate={() => setUpdateModalPatient(p)}
                                                     onBumpUp={() => handleNudge(p.id, 10)}
