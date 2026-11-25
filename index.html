@@ -595,7 +595,7 @@
         // =========================================================================
         const PatientCard = ({
             patient, canManageLR, userRole, priorityScore, waitTime, queueNumber, flashType,
-            onCall, onUpdate, onBumpUp, onBumpDown, onCancel, onNoteBooking, onWardSend
+            onCall, onUpdate, onBumpUp, onBumpDown, onCancel, onNoteBooking, onWardSend, onArrived, onCancelCall
         }) => {
             const [noteName, setNoteName] = React.useState('');
             const [wardAckName, setWardAckName] = React.useState('');
@@ -698,15 +698,21 @@
                         </div>
 
                         {/* Status / Actions Footer */}
-                        {patient.status === 'CALLED' ? (
-                            <div className="rounded-xl bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800 p-2.5 space-y-2">
-                                <div className="flex items-center justify-between text-[11px] font-extrabold text-sky-800 dark:text-sky-200">
+                        {patient.status === 'CALLED' || patient.status === 'EN_ROUTE' ? (
+                            <div className={`rounded-xl border p-2.5 space-y-2 ${patient.status === 'EN_ROUTE' ? 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800' : 'bg-sky-50 dark:bg-sky-950/50 border-sky-200 dark:border-sky-800'}`}>
+                                <div className={`flex items-center justify-between text-[11px] font-extrabold ${patient.status === 'EN_ROUTE' ? 'text-indigo-800 dark:text-indigo-200' : 'text-sky-800 dark:text-sky-200'}`}>
                                     <span className="flex items-center gap-1">
-                                        <i className="ph-fill ph-bell-ringing animate-bounce"></i> CALLED TO {patient.calledToBed}
+                                        <i className={`ph-fill ${patient.status === 'EN_ROUTE' ? 'ph-person-simple-walk' : 'ph-bell-ringing'} animate-bounce`}></i>
+                                        {patient.status === 'EN_ROUTE' ? `EN ROUTE TO ${patient.calledToBed || 'LR'}` : `CALLED TO ${patient.calledToBed || 'LR'}`}
                                     </span>
-                                    <span className="font-mono">@ {formatDateTimeDisp(patient.callTime)}</span>
+                                    <span className="font-mono">@ {formatDateTimeDisp(patient.status === 'EN_ROUTE' ? (patient.wardSendTime || patient.callTime) : patient.callTime)}</span>
                                 </div>
-                                {canConfirmTransfer ? (
+                                {patient.status === 'EN_ROUTE' && patient.wardNotedBy && (
+                                    <p className="text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
+                                        Sent by {patient.wardNotedBy}
+                                    </p>
+                                )}
+                                {patient.status === 'CALLED' && canConfirmTransfer && (
                                     <div className="flex gap-1.5">
                                         <input
                                             value={wardAckName}
@@ -721,9 +727,30 @@
                                             Confirm Send
                                         </button>
                                     </div>
-                                ) : (
+                                )}
+                                {canManageLR ? (
+                                    <div className="flex gap-1.5">
+                                        <button
+                                            onClick={() => onArrived(patient.id)}
+                                            className="flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold py-1.5 shadow-sm transition"
+                                        >
+                                            Confirm Patient Arrived
+                                        </button>
+                                        <button
+                                            onClick={() => onCancelCall(patient.id)}
+                                            className="rounded-lg bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-rose-600 text-[11px] font-bold px-2.5 py-1.5 transition"
+                                            title="Return to Waiting Queue"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                ) : patient.status === 'CALLED' && !canConfirmTransfer ? (
                                     <p className="text-[10px] font-semibold text-sky-700 dark:text-sky-300">
                                         Awaiting {patient.location} transfer confirmation...
+                                    </p>
+                                ) : (
+                                    <p className="text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
+                                        Awaiting Labour Room arrival confirmation...
                                     </p>
                                 )}
                             </div>
@@ -799,7 +826,7 @@
         // =========================================================================
         const BedSlot = ({
             bedName, patient, incoming, canManageLR, tvMode, compact, currentTime,
-            onUpdate, onMove, onDeliver, onEditDelivery, onSendToOT, onClear, onArrived
+            onUpdate, onMove, onDeliver, onEditDelivery, onSendToOT, onClear, onArrived, onCancelCall
         }) => {
             const isOT = bedName === 'OT';
             const isISO = bedName.includes('ISO');
@@ -818,80 +845,23 @@
                         <div className="my-2">
                             <p className="text-sm font-extrabold text-slate-900 dark:text-white truncate">{incoming.name}</p>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                                {isEnRoute ? `Sent by ${incoming.wardNotedBy}` : `Called ${formatDuration(incoming.callTime, currentTime)} ago`}
+                                {isEnRoute ? `Sent by ${incoming.wardNotedBy || incoming.location}` : `Called ${formatDuration(incoming.callTime, currentTime)} ago • ${incoming.location}`}
                             </p>
                         </div>
-                        {canManageLR && !tvMode && isEnRoute && (
-                            <button
-                                onClick={() => onArrived(incoming.id)}
-                                className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2 shadow-sm transition"
-                            >
-                                Confirm Patient Arrived
-                            </button>
-                        )}
-                    </div>
-                );
-            }
-
-            // Vacant State
-            if (!patient) {
-                return (
-                    <div className={`rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 bg-white/40 dark:bg-slate-900/30 p-4 flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 ${compact ? 'min-h-[100px]' : 'min-h-[145px]'}`}>
-                        <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{bedName}</span>
-                        <span className="text-[11px] mt-0.5">Vacant</span>
-                    </div>
-                );
-            }
-
-            const isDelivered = patient.status === 'DELIVERED';
-            const mode = normalizeMode(patient.deliveryMode);
-            const pph = isDelivered ? classifyPPH(mode, patient.ebl) : { level: 'NONE', label: '' };
-
-            // Delivered Holding Card
-            if (isDelivered) {
-                const borderStyle = pph.level === 'MASSIVE'
-                    ? 'border-rose-400 dark:border-rose-700 bg-rose-50/70 dark:bg-rose-950/30'
-                    : pph.level === 'PPH'
-                        ? 'border-amber-400 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-950/25'
-                        : 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/25';
-
-                return (
-                    <div className={`rounded-2xl border p-3.5 shadow-sm flex flex-col justify-between gap-2.5 ${borderStyle}`}>
-                        <div>
-                            <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs font-extrabold text-emerald-800 dark:text-emerald-300">{bedName}</span>
-                                <div className="flex items-center gap-1">
-                                    <span className="px-2 py-0.5 rounded-lg bg-emerald-600 text-white font-mono text-[10px] font-bold">
-                                        {mode}
-                                    </span>
-                                    {pph.level !== 'NONE' && (
-                                        <span className={`px-1.5 py-0.5 rounded-lg text-[10px] font-extrabold text-white ${pph.level === 'MASSIVE' ? 'bg-rose-600' : 'bg-amber-500'}`}>
-                                            {pph.label}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                            <h3 className="font-extrabold text-sm text-slate-900 dark:text-white mt-1.5 truncate">{patient.name}</h3>
-                            <p className="text-[11px] font-mono text-slate-600 dark:text-slate-400">
-                                Born @ {formatDateTimeDisp(patient.deliveryTime)} {patient.ebl ? `• EBL ${patient.ebl}mL` : ''}
-                            </p>
-                            {patient.lscsIndication && (
-                                <p className="text-[10px] text-slate-600 dark:text-slate-300 mt-0.5 truncate">
-                                    Ind: {patient.lscsIndication}
-                                </p>
-                            )}
-                        </div>
-
                         {canManageLR && !tvMode && (
-                            <div className="flex gap-1.5 pt-2 border-t border-black/5 dark:border-white/10">
-                                <button onClick={onEditDelivery} className="rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold px-2.5 py-1.5 transition">
-                                    Edit
+                            <div className="flex gap-1.5">
+                                <button
+                                    onClick={() => onArrived(incoming.id)}
+                                    className="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2 shadow-sm transition"
+                                >
+                                    Confirm Patient Arrived
                                 </button>
-                                <button onClick={onMove} className="rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold px-2.5 py-1.5 transition">
-                                    Move
-                                </button>
-                                <button onClick={onClear} className="flex-1 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-[11px] font-bold py-1.5 transition">
-                                    Transfer Ward
+                                <button
+                                    onClick={() => onCancelCall(incoming.id)}
+                                    className="rounded-xl bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-rose-600 text-xs font-bold px-2.5 py-2 transition"
+                                    title="Cancel Call & Return to Queue"
+                                >
+                                    <i className="ph-bold ph-x"></i>
                                 </button>
                             </div>
                         )}
@@ -2547,9 +2517,18 @@
             const handleArrived = (id) => {
                 const target = patients.find(p => p.id === id);
                 if (!target) return;
-                upsertPatient({ ...target, status: 'IN_LR', assignedBed: target.calledToBed, admissionTime: Date.now() });
+                const bed = target.calledToBed || target.assignedBed || 'Room 3';
+                upsertPatient({ ...target, status: 'IN_LR', assignedBed: bed, admissionTime: Date.now() });
                 playAlertSound('update', isMuted);
-                showToast(`${target.name} arrived in ${target.calledToBed}.`);
+                showToast(`${target.name} admitted to ${bed}.`);
+            };
+
+            const handleCancelCall = (id) => {
+                const target = patients.find(p => p.id === id);
+                if (!target) return;
+                upsertPatient({ ...target, status: 'WAITING', calledToBed: null, callTime: null, wardSendTime: null, wardNotedBy: null });
+                playAlertSound('update', isMuted);
+                showToast(`Returned ${target.name} to waiting queue.`);
             };
 
             const handleSendToOT = (id) => {
@@ -2634,11 +2613,12 @@
             // Computed Queues & KPIs
             const waitingAll = React.useMemo(() => {
                 return patients
-                    .filter(p => p.status === 'WAITING' || p.status === 'CALLED')
+                    .filter(p => p.status === 'WAITING' || p.status === 'CALLED' || p.status === 'EN_ROUTE')
                     .sort((a, b) => {
-                        if (a.status === 'CALLED' && b.status !== 'CALLED') return -1;
-                        if (b.status === 'CALLED' && a.status !== 'CALLED') return 1;
-                        if (a.status === 'CALLED' && b.status === 'CALLED') return (a.callTime || 0) - (b.callTime || 0);
+                        const rank = (s) => (s === 'EN_ROUTE' ? 0 : s === 'CALLED' ? 1 : 2);
+                        const rDiff = rank(a.status) - rank(b.status);
+                        if (rDiff !== 0) return rDiff;
+                        if (a.status !== 'WAITING') return (a.callTime || 0) - (b.callTime || 0);
                         const diff = calculatePriority(b) - calculatePriority(a);
                         return diff !== 0 ? diff : (a.bookingTime || 0) - (b.bookingTime || 0);
                     });
@@ -2648,7 +2628,7 @@
                 return waitingAll.filter(p => {
                     if (queueFilter === 'MINE') return p.location === userRole;
                     if (queueFilter === 'HIGH') return calculatePriority(p) >= 35 || p.ctg !== 'Normal';
-                    if (queueFilter === 'CALLED') return p.status === 'CALLED';
+                    if (queueFilter === 'CALLED') return p.status === 'CALLED' || p.status === 'EN_ROUTE';
                     return true;
                 });
             }, [waitingAll, queueFilter, userRole]);
@@ -2697,6 +2677,7 @@
                         onSendToOT={() => handleSendToOT(occupant?.id)}
                         onClear={() => handleTransferToWard(occupant?.id)}
                         onArrived={handleArrived}
+                        onCancelCall={handleCancelCall}
                     />
                 );
             };
@@ -2945,6 +2926,8 @@
                                                     onCancel={() => handleCancelBooking(p.id)}
                                                     onNoteBooking={handleNoteBooking}
                                                     onWardSend={handleWardSend}
+                                                    onArrived={handleArrived}
+                                                    onCancelCall={handleCancelCall}
                                                 />
                                             ))
                                         )}
